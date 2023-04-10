@@ -20,7 +20,7 @@ namespace ArcadeBot.Net.WebSockets
         private readonly DiscordWebsocketClient _clientSocket;
         private readonly IMediator _mediator;
         private readonly ConcurrentQueue<long> _heartbeatTimes;
-        private readonly IOptions<BotOptions> _botConfig;
+        private readonly BotOptions _botConfig;
 
         private Task? _heartbeatTask;
         private int _lastSeq;
@@ -31,10 +31,10 @@ namespace ArcadeBot.Net.WebSockets
             _logger = logger;
             _clientSocket = clientSocket;
             _mediator = mediator;
+            _botConfig = botConfig.Value;
 
             _heartbeatTimes = new ConcurrentQueue<long>();
-            _clientSocket.ReceivedGatewayEvent += HandleHeartbeat;
-            _botConfig = botConfig;
+            _clientSocket.ReceivedGatewayEvent += HandleGatewayEvent;
         }
 
         public async Task ConnectAsync(CancellationToken stoppingToken)
@@ -98,7 +98,7 @@ namespace ArcadeBot.Net.WebSockets
         {
             var identify = new Identify
             {
-                Token = _botConfig.Value.Token,
+                Token = _botConfig.Token,
                 LargeThreshold = 100,
                 Intents = (int)GatewayIntents.AllUnprivileged,
                 Presence = new PresenceUpdateParams
@@ -128,32 +128,42 @@ namespace ArcadeBot.Net.WebSockets
         #region EventHandlers
 
 
-        private Task HandleHeartbeat(SocketFrame message)
+        private Task HandleGatewayEvent(SocketFrame message)
         {
             if (message!.Sequence != null)
                 _lastSeq = message.Sequence.Value;
             _lastMessageTime = Environment.TickCount;
-            
+
             if (message.OpCode != OpCodes.Gateway.Hello && message.OpCode != OpCodes.Gateway.HeartbeatACK)
                 return Task.CompletedTask;
             switch (message!.OpCode)
             {
                 case OpCodes.Gateway.Hello:
-                    _logger.LogDebug("Recieved Hello, starting heartbeat");
-                    _heartbeatTask ??= StartHeartbeatAsync(message?.EventData?.Deserialize<HelloEvent>(), CancelToken);
+                    HandleHeartbeat(message?.EventData?.Deserialize<HelloEvent>());
                     break;
                 case OpCodes.Gateway.HeartbeatACK:
-                    if (!_heartbeatTimes.TryDequeue(out long time))
-                        break;
-                    int latency = (int)(Environment.TickCount - time);
-                    int before = Latency;
-                    Latency = latency;
-                    _logger.LogDebug("[HeartbeatACK]: Latency {latency}, old {oldLatency}", latency, before);
+                    HandleHeartbeat();
                     break;
             }
             return Task.CompletedTask;
         }
 
+
+        private void HandleHeartbeat(HelloEvent? eventArgs = null)
+        {
+            if (eventArgs is not null)
+            {
+                _logger.LogDebug("Recieved Hello, starting heartbeat");
+                _heartbeatTask ??= StartHeartbeatAsync(eventArgs, CancelToken);
+                return;
+            }
+            if (!_heartbeatTimes.TryDequeue(out long time))
+                return;
+            int latency = (int)(Environment.TickCount - time);
+            int before = Latency;
+            Latency = latency;
+            _logger.LogDebug("[HeartbeatACK]: Latency {latency}, old {oldLatency}", latency, before);
+        }
         #endregion
     }
 }

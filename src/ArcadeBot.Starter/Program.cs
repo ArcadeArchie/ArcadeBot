@@ -17,10 +17,9 @@ public class Program
             .UseSerilog()
             .ConfigureServices((ctx, services) =>
             {
-                services.Configure<BotOptions>(ctx.Configuration.GetSection("Bot"));
                 services
                 .AddMediator()
-                .AddDiscordWebsockets()
+                .AddDiscordWebsockets(ctx.Configuration.GetSection("Bot"))
                 .AddHostedService<WebSocketWorker>();
                 // services.AddHostedService<WebSocketWorker>();
             })
