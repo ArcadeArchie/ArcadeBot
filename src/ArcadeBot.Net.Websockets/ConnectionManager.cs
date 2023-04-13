@@ -134,18 +134,42 @@ namespace ArcadeBot.Net.WebSockets
                 _lastSeq = message.Sequence.Value;
             _lastMessageTime = Environment.TickCount;
 
-            if (message.OpCode != OpCodes.Gateway.Hello && message.OpCode != OpCodes.Gateway.HeartbeatACK)
-                return Task.CompletedTask;
-            switch (message!.OpCode)
-            {
-                case OpCodes.Gateway.Hello:
-                    HandleHeartbeat(message?.EventData?.Deserialize<HelloEvent>());
-                    break;
-                case OpCodes.Gateway.HeartbeatACK:
-                    HandleHeartbeat();
-                    break;
-            }
+            if (message.OpCode == OpCodes.Gateway.Hello || message.OpCode == OpCodes.Gateway.HeartbeatACK)
+                return HeartBeat();
+
+            if (message.OpCode == OpCodes.Gateway.Dispatch)
+                return Dispatch();
+
             return Task.CompletedTask;
+
+            Task Dispatch()
+            {
+                if (message.EventData != null)
+                {
+                    var eventData = message.EventName switch
+                    {
+                        "READY" => message.EventData.ToJsonString(),
+                        "GUILD_CREATE" => message.EventData.ToJsonString(),
+                    };
+                    _logger.LogInformation(eventData);
+                }
+                return Task.CompletedTask;
+            }
+
+
+            Task HeartBeat()
+            {
+                switch (message!.OpCode)
+                {
+                    case OpCodes.Gateway.Hello:
+                        HandleHeartbeat(message?.EventData?.Deserialize<HelloEvent>());
+                        break;
+                    case OpCodes.Gateway.HeartbeatACK:
+                        HandleHeartbeat();
+                        break;
+                }
+                return Task.CompletedTask;
+            }
         }
 
 
