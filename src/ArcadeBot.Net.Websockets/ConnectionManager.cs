@@ -53,11 +53,6 @@ namespace ArcadeBot.Net.WebSockets
             _logger.LogInformation("Disconnected");
         }
 
-        public void Dispose()
-        {
-            _clientSocket.Dispose();
-        }
-
 
 
         private async Task? StartHeartbeatAsync(HelloEvent? helloEventArgs, CancellationToken token)
@@ -150,8 +145,9 @@ namespace ArcadeBot.Net.WebSockets
                     {
                         "READY" => message.EventData.ToJsonString(),
                         "GUILD_CREATE" => message.EventData.ToJsonString(),
+                        _ => null
                     };
-                    _logger.LogInformation(eventData);
+                    _logger.LogInformation("Dispatch recieved, eventData: [{data}]", eventData);
                 }
                 return Task.CompletedTask;
             }
@@ -187,6 +183,32 @@ namespace ArcadeBot.Net.WebSockets
             int before = Latency;
             Latency = latency;
             _logger.LogDebug("[HeartbeatACK]: Latency {latency}, old {oldLatency}", latency, before);
+        }
+        #endregion
+
+
+        #region IDisposable
+        private bool isDisposed;
+        protected virtual void Dispose(bool disposing)
+        {
+            if (isDisposed)
+                return;
+            if (disposing)
+            {
+                _clientSocket.Dispose();
+                _heartbeatTask?.Dispose();
+            }
+            isDisposed = true;
+        }
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+        ~ConnectionManager()
+        {
+            Dispose(false);
         }
         #endregion
     }
