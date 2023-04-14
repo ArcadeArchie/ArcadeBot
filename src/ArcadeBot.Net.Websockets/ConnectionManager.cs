@@ -143,11 +143,11 @@ namespace ArcadeBot.Net.WebSockets
                 {
                     var eventData = message.EventName switch
                     {
-                        "READY" => message.EventData.ToJsonString(),
-                        "GUILD_CREATE" => message.EventData.ToJsonString(),
-                        _ => null
+                        // "READY" => message.EventData.ToJsonString(),
+                        // "GUILD_CREATE" => message.EventData.ToJsonString(), // do deserialization to proper DTOs
+                        _ => message.EventData.ToJsonString()
                     };
-                    _logger.LogInformation("Dispatch recieved, eventData: [{data}]", eventData);
+                    _logger.LogDebug("Dispatch recieved, eventName: [{name}], eventData: [{data}]", message.EventName, eventData);
                 }
                 return Task.CompletedTask;
             }
