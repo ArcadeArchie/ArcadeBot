@@ -9,7 +9,7 @@ namespace ArcadeBot.Core.Entities.Emotes
     public class Emote : IEmote, ISnowflakeEntity
     {
         public ulong Id { get; }
-        public string Name { get; }
+        public string Name { get; } = null!;
 
         public bool Animated { get; }
         public DateTimeOffset CreatedAt => SnowflakeUtils.FromId(Id);
