@@ -7,5 +7,5 @@ namespace ArcadeBot.Core.Entities;
 
 public interface IEntity<TId> where TId : IEquatable<TId>
 {
-    TId Id { get; set; }
+    TId Id { get; }
 }

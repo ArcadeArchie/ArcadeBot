@@ -1,4 +1,7 @@
+using System;
+
 namespace ArcadeBot.Core.Entities.Permissions;
+
 [Flags]
 public enum GuildPermission : ulong
 {
