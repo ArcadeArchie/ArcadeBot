@@ -15,6 +15,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArcadeBot.NetTests", "test\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArcadeBot.Net.Websockets", "src\ArcadeBot.Net.Websockets\ArcadeBot.Net.Websockets.csproj", "{487E3C5B-059D-439A-B5AD-D7EDB2081EB5}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{F87FA646-D236-495C-AC56-A491533889AC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArcadeBot.Net.Rest", "src\ArcadeBot.Net.Rest\ArcadeBot.Net.Rest.csproj", "{11023E41-A561-40E9-8448-65E61144A83E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -44,8 +48,13 @@ Global
 		{487E3C5B-059D-439A-B5AD-D7EDB2081EB5}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{487E3C5B-059D-439A-B5AD-D7EDB2081EB5}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{487E3C5B-059D-439A-B5AD-D7EDB2081EB5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{11023E41-A561-40E9-8448-65E61144A83E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{11023E41-A561-40E9-8448-65E61144A83E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{11023E41-A561-40E9-8448-65E61144A83E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{11023E41-A561-40E9-8448-65E61144A83E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{07BB2D19-13B6-4D77-B01C-8E5F4553B99E} = {44631098-CB97-463B-B22B-D52B2714774A}
+		{11023E41-A561-40E9-8448-65E61144A83E} = {F87FA646-D236-495C-AC56-A491533889AC}
 	EndGlobalSection
 EndGlobal

@@ -1,6 +1,7 @@
 namespace ArcadeBot.Core.Entities.Channels
 {
-    public interface INestedChannel
+    public interface INestedChannel : IGuildChannel
     {
+        ulong? Categoryid { get; }
     }
 }
