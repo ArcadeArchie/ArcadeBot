@@ -1,9 +1,8 @@
 using System.Text.Json.Serialization;
-using ArcadeBot.DTO;
 
 namespace ArcadeBot.DTO
 {
-    public class ExtendedGuild : Guild
+    internal class ExtendedGuild : Guild
     {
         [JsonPropertyName("unavailable")]
         public bool? Unavailable { get; set; }

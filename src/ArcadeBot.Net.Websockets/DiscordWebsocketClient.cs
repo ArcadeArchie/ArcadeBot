@@ -3,7 +3,7 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using ArcadeBot.Core;
-using ArcadeBot.Net.WebSockets.API;
+using ArcadeBot.DTO;
 using Microsoft.Extensions.Logging;
 
 namespace ArcadeBot.Net.WebSockets

@@ -1,4 +1,4 @@
-namespace ArcadeBot.Net.WebSockets.API
+namespace ArcadeBot.DTO
 {
     ///https://discord.com/developers/docs/topics/opcodes-and-status-codes#gateway-gateway-opcodes
     public static class OpCodes

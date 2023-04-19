@@ -1,8 +1,8 @@
 using System.Text.Json.Serialization;
 
-namespace ArcadeBot.Net.WebSockets.API.Gateway
+namespace ArcadeBot.DTO.Gateway
 {
-    public class Identify
+    internal class Identify
     {
         [JsonPropertyName("token")]
         public string? Token { get; set; }
@@ -17,7 +17,7 @@ namespace ArcadeBot.Net.WebSockets.API.Gateway
         [JsonPropertyName("intents")]
         public int Intents { get; set; }
     }
-    public class PresenceUpdateParams
+    internal class PresenceUpdateParams
 
     {
         [JsonPropertyName("status")]
@@ -29,7 +29,7 @@ namespace ArcadeBot.Net.WebSockets.API.Gateway
         [JsonPropertyName("activities")]
         public List<Activity>? Activities { get; set; } // TODO, change to interface later
     }
-    public class Activity
+    internal class Activity
     {
         [JsonPropertyName("type")]
         public int Type { get; set; }
