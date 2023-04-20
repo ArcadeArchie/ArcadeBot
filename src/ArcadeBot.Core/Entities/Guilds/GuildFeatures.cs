@@ -11,7 +11,7 @@ namespace ArcadeBot.Core.Entities.Guilds
         public IReadOnlyCollection<string> Experimental { get; }
 
 
-        internal GuildFeatures(GuildFeature value, string[] experimental)
+        public GuildFeatures(GuildFeature value, string[] experimental)
         {
             Value = value;
             Experimental = experimental.ToImmutableArray();

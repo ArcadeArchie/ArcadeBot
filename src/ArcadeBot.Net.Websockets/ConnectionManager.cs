@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
+using ArcadeBot.Converters;
 using ArcadeBot.Core;
 using ArcadeBot.DTO;
 using ArcadeBot.DTO.Gateway;
@@ -20,7 +22,11 @@ namespace ArcadeBot.Net.WebSockets
         private readonly IMediator _mediator;
         private readonly ConcurrentQueue<long> _heartbeatTimes;
         private readonly BotOptions _botConfig;
-
+        private readonly JsonSerializerOptions _serializerOptions = new JsonSerializerOptions
+        {
+            NumberHandling = JsonNumberHandling.AllowReadingFromString,
+            Converters = { new GuildFeaturesJsonConverter() }
+        };
         private Task? _heartbeatTask;
         private int _lastSeq;
         private long _lastMessageTime;
@@ -140,10 +146,10 @@ namespace ArcadeBot.Net.WebSockets
             {
                 if (message.EventData != null)
                 {
-                    var eventData = message.EventName switch
+                    object? eventData = message.EventName switch
                     {
                         // "READY" => message.EventData.ToJsonString(),
-                        // "GUILD_CREATE" => message.EventData.ToJsonString(), // do deserialization to proper DTOs
+                        "GUILD_CREATE" => message.EventData.Deserialize<ExtendedGuild>(_serializerOptions), // do deserialization to proper DTOs
                         _ => message.EventData.ToJsonString()
                     };
                     _logger.LogDebug("Dispatch recieved, eventName: [{name}], eventData: [{data}]", message.EventName, eventData);
