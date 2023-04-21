@@ -135,7 +135,11 @@ namespace ArcadeBot.Net.WebSockets
             _lastMessageTime = Environment.TickCount;
 
             if (message.OpCode == OpCodes.Gateway.Hello || message.OpCode == OpCodes.Gateway.HeartbeatACK)
+            {
+                if (_heartbeatTask != null)// hotfix send re-identify
+                    return IdentifyAsync();
                 return HeartBeat();
+            }
 
             if (message.OpCode == OpCodes.Gateway.Dispatch)
                 return Dispatch();
