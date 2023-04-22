@@ -18,6 +18,7 @@ namespace ArcadeBot.Net.WebSockets
             add { _receivedGatewayEvent.Add(value); }
             remove { _receivedGatewayEvent.Remove(value); }
         }
+        public WebSocketState State => _clientSocket!.State;
 
         private readonly ILogger<DiscordWebsocketClient> _logger;
         private readonly SemaphoreSlim _lock;
@@ -32,6 +33,7 @@ namespace ArcadeBot.Net.WebSockets
         private CancellationTokenSource _disconnectTokenSource;
         private CancellationTokenSource? _cancelTokenSource;
         private CancellationToken _cancelToken;
+        private bool _serverSideClose;
 
         public DiscordWebsocketClient(ILogger<DiscordWebsocketClient> logger, Uri socketUri)
         {
@@ -46,6 +48,7 @@ namespace ArcadeBot.Net.WebSockets
             //Ensure clean connection
             await DisconnectInternal(false);
             _isDisconnecting = false;
+            _serverSideClose = false;
 
             await _lock.WaitAsync().ConfigureAwait(false);
             _compressed?.Dispose();
@@ -84,7 +87,9 @@ namespace ArcadeBot.Net.WebSockets
                     byte[]? result;
                     int resultCount;
                     if (socketResult.MessageType == WebSocketMessageType.Close)
-                        throw new SocketCloseException(socketResult.CloseStatusDescription ?? "The remote host send a close");
+                    {
+                        throw new GatewayReconnectException(socketResult.CloseStatusDescription ?? "The remote host send a close");
+                    }
                     if (socketResult.EndOfMessage)
                     {
                         result = recieveBuf.Array;
@@ -109,11 +114,11 @@ namespace ArcadeBot.Net.WebSockets
                     await _receivedGatewayEvent.InvokeAsync(message).ConfigureAwait(false);
                 }
             }
-            catch (SocketCloseException)
+            catch (GatewayReconnectException ex)
             {
+                _logger.LogCritical(ex, "An error occrued in the recieve loop, closing connection");
                 await DisconnectAsync();
-                if (!_isDisconnecting)
-                    await ConnectAsync();
+                await ConnectAsync();
             }
             catch (Exception ex)
             {
@@ -146,8 +151,10 @@ namespace ArcadeBot.Net.WebSockets
                     return;
                 if (!isDisposing)
                 {
-                    await _clientSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "", _cancelToken);
-                    // await _clientSocket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "", _cancelToken);
+                    if (_serverSideClose) // discord closed the connection
+                        await _clientSocket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "", _cancelToken);
+                    else // we closed the connection
+                        await _clientSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "", _cancelToken);
                 }
 
                 _clientSocket.Dispose();
@@ -206,6 +213,21 @@ namespace ArcadeBot.Net.WebSockets
             var payload = JsonSerializer.SerializeToUtf8Bytes(message);
             return await SendAsync(payload, 0, payload.Length, true);
         }
+
+
+
+
+
+        public async Task<bool> SendHeartbeatAsync(int lastSeq)
+        {
+            var message = new SocketFrame
+            {
+                OpCode = OpCodes.Gateway.Heartbeat,
+                EventData = lastSeq
+            };
+            return await SendAsync(message);
+        }
+
 
         #endregion
 

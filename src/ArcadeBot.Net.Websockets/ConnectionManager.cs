@@ -62,42 +62,55 @@ namespace ArcadeBot.Net.WebSockets
 
 
 
-        private async Task? StartHeartbeatAsync(HelloEvent? helloEventArgs, CancellationToken token)
+        private async Task? StartHeartbeatAsync(int intervalMillis, CancellationToken token)
         {
             try
             {
-                ArgumentNullException.ThrowIfNull(helloEventArgs);
+                _logger.LogDebug("Heartbeat Started");
+
                 while (!token.IsCancellationRequested)
                 {
                     int now = Environment.TickCount;
-                    if (!_heartbeatTimes.IsEmpty && (now - _lastMessageTime) > helloEventArgs!.Interval)
+
+                    if (!_heartbeatTimes.IsEmpty && (now - _lastMessageTime) > intervalMillis)
                     {
                         //TODO: handle missed heartbeat 
-                        _logger.LogCritical("Server missed last heartbeat");
-                        throw new Exception();
+                        if (_clientSocket.State == System.Net.WebSockets.WebSocketState.Open)
+                        {
+                            _logger.LogCritical("Server missed last heartbeat");
+                            await ReconnectAsync().ConfigureAwait(false);
+                            return;
+                        }
                     }
                     _heartbeatTimes.Enqueue(now);
-                    /*if (!*/
-                    await HeartbeatAsync(_lastSeq);
-                        // throw new SocketException();
-                    await Task.Delay(helloEventArgs!.Interval, token);
+                    try
+                    {
+                        await _clientSocket.SendHeartbeatAsync(_lastSeq);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogCritical(ex, "Heartbeat errored");
+                    }
+                    await Task.Delay(intervalMillis, token);
                 }
+                _logger.LogDebug("Heartbeat Stopped");
             }
-            catch (Exception)
+            catch (OperationCanceledException)
             {
-
-                throw;
+                _logger.LogDebug("Heartbeat Stopped");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogCritical(ex, "Heartbeat errored");
             }
         }
 
-        private async Task<bool> HeartbeatAsync(int lastSeq)
+        private async Task ReconnectAsync()
         {
-            var message = new SocketFrame
-            {
-                OpCode = OpCodes.Gateway.Heartbeat,
-                EventData = lastSeq
-            };
-            return await _clientSocket.SendAsync(message);
+            _logger.LogInformation("Reconnecting");
+            await _clientSocket.ConnectAsync();
+            _logger.LogInformation("Reconnected");
+            await IdentifyAsync();
         }
 
         private async Task IdentifyAsync()
@@ -106,7 +119,8 @@ namespace ArcadeBot.Net.WebSockets
             {
                 Token = _botConfig.Token,
                 LargeThreshold = 100,
-                Intents = (int)GatewayIntents.AllUnprivileged,
+                Intents = (int)((GatewayIntents.AllUnprivileged & ~(GatewayIntents.GuildScheduledEvents | GatewayIntents.GuildInvites)) |
+            GatewayIntents.GuildMembers | GatewayIntents.GuildMessages | GatewayIntents.MessageContent),
                 Presence = new PresenceUpdateParams
                 {
                     Status = "dnd", //https://discord.com/developers/docs/topics/gateway-events#update-presence-status-types
@@ -187,8 +201,8 @@ namespace ArcadeBot.Net.WebSockets
         {
             if (eventArgs is not null)
             {
-                _logger.LogDebug("Recieved Hello, starting heartbeat");
-                _heartbeatTask ??= StartHeartbeatAsync(eventArgs, CancelToken);
+                _logger.LogDebug("Recieved Hello");
+                _heartbeatTask ??= StartHeartbeatAsync(eventArgs.Interval, CancelToken);
                 return;
             }
             if (!_heartbeatTimes.TryDequeue(out long time))
