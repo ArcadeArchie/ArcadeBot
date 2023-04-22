@@ -6,7 +6,7 @@ namespace ArcadeBot.DTO
     public class Game
     {        
         [JsonPropertyName("name")]
-        public string Name { get; set; }
+        public string Name { get; set; } = null!;
         [JsonPropertyName("url")]
         public string? StreamUrl { get; set; }
         [JsonPropertyName("type")]

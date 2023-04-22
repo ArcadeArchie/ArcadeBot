@@ -9,7 +9,7 @@ namespace ArcadeBot.DTO
 {
     public class Presence
     {
-        public User User { get; set; }
+        public User? User { get; set; }
         public ulong? GuildId { get; set; }
         public UserStatus Status { get; set; }
 

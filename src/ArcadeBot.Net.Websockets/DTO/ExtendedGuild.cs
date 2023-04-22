@@ -30,5 +30,10 @@ namespace ArcadeBot.DTO
 
         [JsonPropertyName("guild_scheduled_events")]
         public GuildScheduledEvent[] GuildScheduledEvents { get; set; } = Array.Empty<GuildScheduledEvent>();
+
+        public override string ToString()
+        {
+            return $"{Name}<{Id}>";
+        }
     }
 }

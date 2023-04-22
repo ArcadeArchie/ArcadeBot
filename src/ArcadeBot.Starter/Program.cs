@@ -12,8 +12,7 @@ public class Program
         .MinimumLevel.Debug()
         .Enrich.FromLogContext()
         .WriteTo.File("Debug.log", Serilog.Events.LogEventLevel.Debug, 
-        rollingInterval: RollingInterval.Hour, 
-        retainedFileTimeLimit: TimeSpan.Zero,
+        rollingInterval: RollingInterval.Hour,
         outputTemplate: "[{Timestamp:HH:mm:ss} {SourceContext:l} {Level:u3}] {Message:lj}{NewLine}{Exception}")
         .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {SourceContext:l} {Level:u3}] {Message:lj}{NewLine}{Exception}")
         .CreateLogger();
