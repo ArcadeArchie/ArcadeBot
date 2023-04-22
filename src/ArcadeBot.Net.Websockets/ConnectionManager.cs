@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Net.Sockets;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -37,7 +38,8 @@ namespace ArcadeBot.Net.WebSockets
             _clientSocket = clientSocket;
             _mediator = mediator;
             _botConfig = botConfig.Value;
-
+            if (string.IsNullOrEmpty(_botConfig.Token))
+                throw new InvalidOperationException("Invalid bot token");
             _heartbeatTimes = new ConcurrentQueue<long>();
             _clientSocket.ReceivedGatewayEvent += HandleGatewayEvent;
         }
@@ -70,28 +72,32 @@ namespace ArcadeBot.Net.WebSockets
                     int now = Environment.TickCount;
                     if (!_heartbeatTimes.IsEmpty && (now - _lastMessageTime) > helloEventArgs!.Interval)
                     {
-                        //TODO: handle missed heartbeat    
+                        //TODO: handle missed heartbeat 
+                        _logger.LogCritical("Server missed last heartbeat");
+                        throw new Exception();
                     }
                     _heartbeatTimes.Enqueue(now);
+                    /*if (!*/
                     await HeartbeatAsync(_lastSeq);
+                        // throw new SocketException();
                     await Task.Delay(helloEventArgs!.Interval, token);
                 }
             }
-            catch (System.Exception)
+            catch (Exception)
             {
 
                 throw;
             }
         }
 
-        private async Task HeartbeatAsync(int lastSeq)
+        private async Task<bool> HeartbeatAsync(int lastSeq)
         {
             var message = new SocketFrame
             {
                 OpCode = OpCodes.Gateway.Heartbeat,
                 EventData = lastSeq
             };
-            await _clientSocket.SendAsync(message);
+            return await _clientSocket.SendAsync(message);
         }
 
         private async Task IdentifyAsync()

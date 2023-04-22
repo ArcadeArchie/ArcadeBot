@@ -112,7 +112,8 @@ namespace ArcadeBot.Net.WebSockets
             catch (SocketCloseException)
             {
                 await DisconnectAsync();
-                await ConnectAsync();
+                if (!_isDisconnecting)
+                    await ConnectAsync();
             }
             catch (Exception ex)
             {
@@ -135,6 +136,8 @@ namespace ArcadeBot.Net.WebSockets
 
         private async Task DisconnectInternal(bool isDisposing)
         {
+            if (_isDisconnecting)
+                return;
             await _lock.WaitAsync().ConfigureAwait(false);
             try
             {
@@ -143,11 +146,15 @@ namespace ArcadeBot.Net.WebSockets
                     return;
                 if (!isDisposing)
                 {
-                    await _clientSocket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "", _cancelToken);
+                    await _clientSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "", _cancelToken);
+                    // await _clientSocket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "", _cancelToken);
                 }
 
                 _clientSocket.Dispose();
                 _clientSocket = null;
+
+                await (_recieveTask ?? Task.Delay(0)).ConfigureAwait(false);
+                _recieveTask = null;
             }
             catch (Exception ex)
             {
@@ -156,6 +163,7 @@ namespace ArcadeBot.Net.WebSockets
             finally
             {
                 _disconnectTokenSource.Cancel(false);
+                _isDisconnecting = false;
                 _lock.Release();
             }
         }
@@ -165,12 +173,12 @@ namespace ArcadeBot.Net.WebSockets
 
         #region SendAsync
 
-        public async Task SendAsync(byte[] data, int index, int count, bool isText)
+        public async Task<bool> SendAsync(byte[] data, int index, int count, bool isText)
         {
             await _lock.WaitAsync().ConfigureAwait(false);
             try
             {
-                if (_clientSocket == null) return;
+                if (_clientSocket == null) return false;
                 int frameCount = (int)Math.Ceiling((double)count / SendChunkSize);
 
                 for (int i = 0; i < frameCount; i++, index += SendChunkSize)
@@ -180,18 +188,23 @@ namespace ArcadeBot.Net.WebSockets
                     var type = isText ? WebSocketMessageType.Text : WebSocketMessageType.Binary;
                     await _clientSocket.SendAsync(new ArraySegment<byte>(data, index, count), type, isLast, _cancelToken).ConfigureAwait(false);
                 }
+                return true;
             }
-            catch (Exception ex) { _logger.LogError(ex, "An error occured trying to send the message"); }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "An error occured trying to send the message");
+                return false;
+            }
             finally
             {
                 _lock.Release();
             }
         }
 
-        public async Task SendAsync(SocketFrame message)
+        public async Task<bool> SendAsync(SocketFrame message)
         {
             var payload = JsonSerializer.SerializeToUtf8Bytes(message);
-            await SendAsync(payload, 0, payload.Length, true);
+            return await SendAsync(payload, 0, payload.Length, true);
         }
 
         #endregion
