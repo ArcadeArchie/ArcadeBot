@@ -1,5 +1,4 @@
 using ArcadeBot.Core;
-using ArcadeBot.Net.WebSockets;
 using Serilog;
 
 namespace ArcadeBot.Starter;
@@ -21,8 +20,7 @@ public class Program
             .ConfigureServices((ctx, services) =>
             {
                 services
-                .AddMediator()
-                .AddDiscordWebsockets(ctx.Configuration.GetSection("Bot"))
+                .AddDiscordBot(ctx.Configuration.GetSection("Bot"))
                 .AddHostedService<WebSocketWorker>();
                 // services.AddHostedService<WebSocketWorker>();
             })

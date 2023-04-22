@@ -13,12 +13,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tests", "Tests", "{44631098
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArcadeBot.NetTests", "test\ArcadeBot.NetTests\ArcadeBot.NetTests.csproj", "{07BB2D19-13B6-4D77-B01C-8E5F4553B99E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArcadeBot.Net.Websockets", "src\ArcadeBot.Net.Websockets\ArcadeBot.Net.Websockets.csproj", "{487E3C5B-059D-439A-B5AD-D7EDB2081EB5}"
-EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{F87FA646-D236-495C-AC56-A491533889AC}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArcadeBot.Net.Rest", "src\ArcadeBot.Net.Rest\ArcadeBot.Net.Rest.csproj", "{11023E41-A561-40E9-8448-65E61144A83E}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -32,10 +26,6 @@ Global
 		{2165B53B-FE64-4DE2-906C-094BD6EEFE50}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{2165B53B-FE64-4DE2-906C-094BD6EEFE50}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{2165B53B-FE64-4DE2-906C-094BD6EEFE50}.Release|Any CPU.Build.0 = Release|Any CPU
-		{BB07CFC1-AB7F-42C0-BDFE-D63F78E830A1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{BB07CFC1-AB7F-42C0-BDFE-D63F78E830A1}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{BB07CFC1-AB7F-42C0-BDFE-D63F78E830A1}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{BB07CFC1-AB7F-42C0-BDFE-D63F78E830A1}.Release|Any CPU.Build.0 = Release|Any CPU
 		{8B9A2287-14B9-45DD-9B2D-1C212511AF14}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{8B9A2287-14B9-45DD-9B2D-1C212511AF14}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{8B9A2287-14B9-45DD-9B2D-1C212511AF14}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -44,17 +34,8 @@ Global
 		{07BB2D19-13B6-4D77-B01C-8E5F4553B99E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{07BB2D19-13B6-4D77-B01C-8E5F4553B99E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{07BB2D19-13B6-4D77-B01C-8E5F4553B99E}.Release|Any CPU.Build.0 = Release|Any CPU
-		{487E3C5B-059D-439A-B5AD-D7EDB2081EB5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{487E3C5B-059D-439A-B5AD-D7EDB2081EB5}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{487E3C5B-059D-439A-B5AD-D7EDB2081EB5}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{487E3C5B-059D-439A-B5AD-D7EDB2081EB5}.Release|Any CPU.Build.0 = Release|Any CPU
-		{11023E41-A561-40E9-8448-65E61144A83E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{11023E41-A561-40E9-8448-65E61144A83E}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{11023E41-A561-40E9-8448-65E61144A83E}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{11023E41-A561-40E9-8448-65E61144A83E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{07BB2D19-13B6-4D77-B01C-8E5F4553B99E} = {44631098-CB97-463B-B22B-D52B2714774A}
-		{11023E41-A561-40E9-8448-65E61144A83E} = {F87FA646-D236-495C-AC56-A491533889AC}
 	EndGlobalSection
 EndGlobal
