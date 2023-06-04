@@ -11,16 +11,18 @@ public class Program
         Log.Logger = new LoggerConfiguration()
         .MinimumLevel.Debug()
         .Enrich.FromLogContext()
+        .WriteTo.File("Debug.log", Serilog.Events.LogEventLevel.Debug, 
+        rollingInterval: RollingInterval.Hour,
+        outputTemplate: "[{Timestamp:HH:mm:ss} {SourceContext:l} {Level:u3}] {Message:lj}{NewLine}{Exception}")
         .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {SourceContext:l} {Level:u3}] {Message:lj}{NewLine}{Exception}")
         .CreateLogger();
         IHost host = Host.CreateDefaultBuilder(args)
             .UseSerilog()
             .ConfigureServices((ctx, services) =>
             {
-                services.Configure<BotOptions>(ctx.Configuration.GetSection("Bot"));
                 services
                 .AddMediator()
-                .AddDiscordWebsockets()
+                .AddDiscordWebsockets(ctx.Configuration.GetSection("Bot"))
                 .AddHostedService<WebSocketWorker>();
                 // services.AddHostedService<WebSocketWorker>();
             })

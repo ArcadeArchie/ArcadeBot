@@ -1,7 +1,7 @@
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
-namespace ArcadeBot.Net.WebSockets.API
+namespace ArcadeBot.DTO
 {
     internal class SocketFrame
     {

@@ -3,7 +3,7 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using ArcadeBot.Core;
-using ArcadeBot.Net.WebSockets.API;
+using ArcadeBot.DTO;
 using Microsoft.Extensions.Logging;
 
 namespace ArcadeBot.Net.WebSockets
@@ -18,6 +18,7 @@ namespace ArcadeBot.Net.WebSockets
             add { _receivedGatewayEvent.Add(value); }
             remove { _receivedGatewayEvent.Remove(value); }
         }
+        public WebSocketState State => _clientSocket!.State;
 
         private readonly ILogger<DiscordWebsocketClient> _logger;
         private readonly SemaphoreSlim _lock;
@@ -32,6 +33,7 @@ namespace ArcadeBot.Net.WebSockets
         private CancellationTokenSource _disconnectTokenSource;
         private CancellationTokenSource? _cancelTokenSource;
         private CancellationToken _cancelToken;
+        private bool _serverSideClose;
 
         public DiscordWebsocketClient(ILogger<DiscordWebsocketClient> logger, Uri socketUri)
         {
@@ -46,6 +48,7 @@ namespace ArcadeBot.Net.WebSockets
             //Ensure clean connection
             await DisconnectInternal(false);
             _isDisconnecting = false;
+            _serverSideClose = false;
 
             await _lock.WaitAsync().ConfigureAwait(false);
             _compressed?.Dispose();
@@ -84,7 +87,9 @@ namespace ArcadeBot.Net.WebSockets
                     byte[]? result;
                     int resultCount;
                     if (socketResult.MessageType == WebSocketMessageType.Close)
-                        throw new SocketCloseException(socketResult.CloseStatusDescription ?? "The remote host send a close");
+                    {
+                        throw new GatewayReconnectException(socketResult.CloseStatusDescription ?? "The remote host send a close");
+                    }
                     if (socketResult.EndOfMessage)
                     {
                         result = recieveBuf.Array;
@@ -109,8 +114,9 @@ namespace ArcadeBot.Net.WebSockets
                     await _receivedGatewayEvent.InvokeAsync(message).ConfigureAwait(false);
                 }
             }
-            catch (SocketCloseException)
+            catch (GatewayReconnectException ex)
             {
+                _logger.LogCritical(ex, "An error occrued in the recieve loop, closing connection");
                 await DisconnectAsync();
                 await ConnectAsync();
             }
@@ -135,6 +141,8 @@ namespace ArcadeBot.Net.WebSockets
 
         private async Task DisconnectInternal(bool isDisposing)
         {
+            if (_isDisconnecting)
+                return;
             await _lock.WaitAsync().ConfigureAwait(false);
             try
             {
@@ -143,11 +151,17 @@ namespace ArcadeBot.Net.WebSockets
                     return;
                 if (!isDisposing)
                 {
-                    await _clientSocket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "", _cancelToken);
+                    if (_serverSideClose) // discord closed the connection
+                        await _clientSocket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "", _cancelToken);
+                    else // we closed the connection
+                        await _clientSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "", _cancelToken);
                 }
 
                 _clientSocket.Dispose();
                 _clientSocket = null;
+
+                await (_recieveTask ?? Task.Delay(0)).ConfigureAwait(false);
+                _recieveTask = null;
             }
             catch (Exception ex)
             {
@@ -156,6 +170,7 @@ namespace ArcadeBot.Net.WebSockets
             finally
             {
                 _disconnectTokenSource.Cancel(false);
+                _isDisconnecting = false;
                 _lock.Release();
             }
         }
@@ -165,12 +180,12 @@ namespace ArcadeBot.Net.WebSockets
 
         #region SendAsync
 
-        public async Task SendAsync(byte[] data, int index, int count, bool isText)
+        public async Task<bool> SendAsync(byte[] data, int index, int count, bool isText)
         {
             await _lock.WaitAsync().ConfigureAwait(false);
             try
             {
-                if (_clientSocket == null) return;
+                if (_clientSocket == null) return false;
                 int frameCount = (int)Math.Ceiling((double)count / SendChunkSize);
 
                 for (int i = 0; i < frameCount; i++, index += SendChunkSize)
@@ -180,19 +195,39 @@ namespace ArcadeBot.Net.WebSockets
                     var type = isText ? WebSocketMessageType.Text : WebSocketMessageType.Binary;
                     await _clientSocket.SendAsync(new ArraySegment<byte>(data, index, count), type, isLast, _cancelToken).ConfigureAwait(false);
                 }
+                return true;
             }
-            catch (Exception ex) { _logger.LogError(ex, "An error occured trying to send the message"); }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "An error occured trying to send the message");
+                return false;
+            }
             finally
             {
                 _lock.Release();
             }
         }
 
-        public async Task SendAsync(SocketFrame message)
+        public async Task<bool> SendAsync(SocketFrame message)
         {
             var payload = JsonSerializer.SerializeToUtf8Bytes(message);
-            await SendAsync(payload, 0, payload.Length, true);
+            return await SendAsync(payload, 0, payload.Length, true);
         }
+
+
+
+
+
+        public async Task<bool> SendHeartbeatAsync(int lastSeq)
+        {
+            var message = new SocketFrame
+            {
+                OpCode = OpCodes.Gateway.Heartbeat,
+                EventData = lastSeq
+            };
+            return await SendAsync(message);
+        }
+
 
         #endregion
 

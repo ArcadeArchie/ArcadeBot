@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ArcadeBot.Core\ArcadeBot.Core.csproj" />
+    <ProjectReference Include="..\ArcadeBot.Net.Rest\ArcadeBot.Net.Rest.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
