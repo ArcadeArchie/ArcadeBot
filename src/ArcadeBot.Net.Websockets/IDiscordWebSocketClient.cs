@@ -75,7 +75,7 @@ public interface IDiscordWebSocketClient : IDisposable
     /// Sets used encoding for sending and receiving text messages. 
     /// Default: UTF8
     /// </summary>
-    Encoding? MessageEncoding { get; set; }
+    Encoding MessageEncoding { get; set; }
 
     /// <summary>
     /// Start listening to the websocket stream on the background thread.

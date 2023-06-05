@@ -73,7 +73,7 @@ internal partial class DiscordWebsocketClient
     private async Task Reconnect(ReconnectionType type, bool failFast, Exception? causedException)
     {
         IsRunning = false;
-        if (_disposed || !IsStarted)
+        if (_disposing || !IsStarted)
         {
             // client already disposed or stopped manually
             return;
@@ -82,7 +82,7 @@ internal partial class DiscordWebsocketClient
         _reconnecting = true;
 
         var disType = TranslateTypeToDisconnection(type);
-        var disInfo = DisconnectionInfo.Create(disType, _client, causedException);
+        var disInfo = DisconnectionInfo.Create(disType, _client!, causedException);
         if (type != ReconnectionType.Error)
         {
             _disconnectedSubject.OnNext(disInfo);

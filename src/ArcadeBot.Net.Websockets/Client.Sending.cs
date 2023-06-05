@@ -3,6 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Threading.Channels;
+using Microsoft.Extensions.Logging;
+using System.Runtime.CompilerServices;
+using System.Net.WebSockets;
 
 namespace ArcadeBot.Net.Websockets;
 
@@ -39,27 +42,71 @@ internal partial class DiscordWebsocketClient
         _messagesBinaryToSendQueue.Writer.TryWrite(message);
     }
 
-    public Task SendInstant(string message)
-    {
-        throw new NotImplementedException();
-    }
+    public Task SendInstant(string message) => SendInternalSynchronized(message);
 
-    public Task SendInstant(byte[] message)
-    {
-        throw new NotImplementedException();
-    }
+    public Task SendInstant(byte[] message) => SendInternalSynchronized(new ArraySegment<byte>(message));
 
-    public void StreamFakeMessage(SocketResponse message)
-    {
-        throw new NotImplementedException();
-    }
+    public void StreamFakeMessage(SocketResponse message) => _messageReceivedSubject.OnNext(message);
 
 
 
     private async Task SendTextFromQueue()
-    { }
+    {
+        try
+        {
+            while (await _messagesTextToSendQueue.Reader.WaitToReadAsync())
+            {
+                while (_messagesTextToSendQueue.Reader.TryRead(out var message))
+                {
+                    try
+                    {
+                        await SendInternalSynchronized(message).ConfigureAwait(false);
+                    }
+                    catch (Exception e)
+                    {
+                        _logger.LogError(e, "Failed to send text message");
+                    }
+                }
+            }
+        }
+        catch (TaskCanceledException) { }
+        catch (OperationCanceledException) { }
+        catch (Exception) when (_cancellationTotal!.IsCancellationRequested || _disposing) { }
+        catch (Exception e)
+        {
+            _logger.LogTrace(e, "Sending text thread failed, Creating new thread");
+            StartTextSendThread();
+        }
+    }
     private async Task SendBinaryFromQueue()
-    { }
+    {
+        try
+        {
+            while (await _messagesBinaryToSendQueue.Reader.WaitToReadAsync())
+            {
+                while (_messagesBinaryToSendQueue.Reader.TryRead(out var message))
+                {
+                    try
+                    {
+                        await SendInternalSynchronized(message).ConfigureAwait(false);
+                    }
+                    catch (Exception e)
+                    {
+                        _logger.LogError(e, "Failed to binary text message");
+                    }
+                }
+            }
+        }
+        catch (TaskCanceledException) { }
+        catch (OperationCanceledException) { }
+        catch (Exception) when (_cancellationTotal!.IsCancellationRequested || _disposing) { }
+        catch (Exception e)
+        {
+            _logger.LogTrace(e, "Sending binary thread failed, Creating new thread");
+            StartBinarySendThread();
+        }
+    }
+
     private void StartTextSendThread()
     {
         _ = Task.Factory.StartNew(_ => SendTextFromQueue(), TaskCreationOptions.LongRunning, _cancellationTotal!.Token);
@@ -68,5 +115,45 @@ internal partial class DiscordWebsocketClient
     private void StartBinarySendThread()
     {
         _ = Task.Factory.StartNew(_ => SendBinaryFromQueue(), TaskCreationOptions.LongRunning, _cancellationTotal!.Token);
+    }
+
+
+
+
+    private async Task SendInternalSynchronized(string message)
+    {
+        using (await _lock.LockAsync())
+        {
+            await SendInternal(message);
+        }
+    }
+    private async Task SendInternalSynchronized(ArraySegment<byte> message)
+    {
+        using (await _lock.LockAsync())
+        {
+            await SendInternal(message);
+        }
+    }
+
+    private async Task SendInternal(string message)
+    {
+        if (!IsClientConnected())
+        {
+            _logger.LogDebug("Client not connected to remote, cant send message: [{message}]", message);
+            return;
+        }
+        _logger.LogTrace("Sending: [{message}]", message);
+        var messageBytes = MessageEncoding.GetBytes(message);
+        await _client!.SendAsync(messageBytes, WebSocketMessageType.Text, true, _cancellation!.Token).ConfigureAwait(false);
+    }
+    private async Task SendInternal(ArraySegment<byte> message)
+    {        
+        if (!IsClientConnected())
+        {
+            _logger.LogDebug("Client not connected to remote, cant send message: [{message}]", message);
+            return;
+        }
+        _logger.LogTrace("Sending: [{message}]", message);
+        await _client!.SendAsync(message, WebSocketMessageType.Text, true, _cancellation!.Token).ConfigureAwait(false);
     }
 }

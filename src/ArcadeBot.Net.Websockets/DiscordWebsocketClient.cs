@@ -40,7 +40,16 @@ internal partial class DiscordWebsocketClient : IDiscordWebSocketClient
 
     public TimeSpan? ReconnectTimeout { get; set; } = TimeSpan.FromMinutes(1);
     public TimeSpan? ErrorReconnectTimeout { get; set; } = TimeSpan.FromMinutes(1);
-    public Encoding? MessageEncoding { get; set; }
+    private Encoding? _msgEncoding = null;
+    public Encoding MessageEncoding
+    {
+        get
+        {
+            _msgEncoding ??= Encoding.UTF8;
+            return _msgEncoding;
+        }
+        set => _msgEncoding = value;
+    }
 
     public bool IsStarted { get; private set; }
     public bool IsRunning { get; private set; }
@@ -84,7 +93,7 @@ internal partial class DiscordWebsocketClient : IDiscordWebSocketClient
     public Task StartOrFail() => StartInternal(true);
     private async Task StartInternal(bool fastFail)
     {
-        if (_disposed)
+        if (_disposing)
             throw new InvalidOperationException("The Client has already been disposed");
         if (IsStarted)
         {
@@ -105,31 +114,31 @@ internal partial class DiscordWebsocketClient : IDiscordWebSocketClient
     public async Task<bool> Stop(WebSocketCloseStatus status, string statusDescription)
     {
         var result = await StopInternal(
-            _client,
+            _client!,
             status,
             statusDescription,
             false,
             false, null).ConfigureAwait(false);
-        _disconnectedSubject.OnNext(DisconnectionInfo.Create(DisconnectionType.ByUser, _client, null));
+        _disconnectedSubject.OnNext(DisconnectionInfo.Create(DisconnectionType.ByUser, _client!, null));
         return result;
     }
 
     public async Task<bool> StopOrFail(WebSocketCloseStatus status, string statusDescription)
     {
         var result = await StopInternal(
-            _client,
+            _client!,
             status,
             statusDescription,
             true,
             false, null).ConfigureAwait(false);
-        _disconnectedSubject.OnNext(DisconnectionInfo.Create(DisconnectionType.ByUser, _client, null));
+        _disconnectedSubject.OnNext(DisconnectionInfo.Create(DisconnectionType.ByUser, _client!, null));
         return result;
     }
 
     private async Task<bool> StopInternal(WebSocket client, WebSocketCloseStatus status, string statusDescription,
             bool failFast, bool byServer, CancellationToken? cancellation)
     {
-        if (_disposed)
+        if (_disposing)
             throw new InvalidOperationException("The Client has already been disposed");
         DeactivateLastChance();
         if (client == null)
@@ -197,7 +206,7 @@ internal partial class DiscordWebsocketClient : IDiscordWebSocketClient
         }
         catch (Exception e)
         {
-            var info = DisconnectionInfo.Create(DisconnectionType.Error, _client, e);
+            var info = DisconnectionInfo.Create(DisconnectionType.Error, _client!, e);
             _disconnectedSubject.OnNext(info);
             if (info.CancelReconnection)
             {
@@ -219,18 +228,161 @@ internal partial class DiscordWebsocketClient : IDiscordWebSocketClient
 
 
     private async Task Listen(WebSocket client, CancellationToken token)
-    { }
+    {
+        Exception? causedException = null;
+        try
+        {
+            const int chunkSize = 1024 * 4;
+            var buffer = new ArraySegment<byte>(new byte[chunkSize]);
+            do
+            {
+                WebSocketReceiveResult result;
+                byte[]? resultArrayWithTrailing = null;
+                var resultArraySize = 0;
+                var isResultArrayCloned = false;
+                MemoryStream? ms = null;
+                while (true)
+                {
+                    result = await client.ReceiveAsync(buffer, token);
+                    var currentChunk = buffer.Array;
+                    var currentChunkSize = result.Count;
+                    var isFirstChunk = resultArrayWithTrailing == null;
+                    if (isFirstChunk)
+                    {
+                        // first chunk, use buffer as reference, do not allocate anything
+                        resultArraySize += currentChunkSize;
+                        resultArrayWithTrailing = currentChunk!;
+                        isResultArrayCloned = false;
+                    }
+                    else if (currentChunk == null)
+                    {
+                        // weird chunk, do nothing
+                    }
+                    else
+                    {
+                        // received more chunks, lets merge them via memory stream
+                        if (ms == null)
+                        {
+                            // create memory stream and insert first chunk
+                            ms = new MemoryStream();
+                            ms.Write(resultArrayWithTrailing!, 0, resultArraySize);
+                        }
+
+                        // insert current chunk
+                        ms.Write(currentChunk, buffer.Offset, currentChunkSize);
+                    }
+                    if (result.EndOfMessage)
+                        break;
+
+                    if (isResultArrayCloned)
+                        continue;
+
+                    // we got more chunks incoming, need to clone first chunk
+                    resultArrayWithTrailing = resultArrayWithTrailing?.ToArray();
+                    isResultArrayCloned = true;
+                }
+                ms?.Seek(0, SeekOrigin.Begin);
+
+                SocketResponse message;
+                if (result.MessageType == WebSocketMessageType.Text && IsTextMessageConversionEnabled)
+                {
+                    var data = ms != null ?
+                        MessageEncoding.GetString(ms.ToArray()) :
+                        resultArrayWithTrailing != null ?
+                            MessageEncoding.GetString(resultArrayWithTrailing, 0, resultArraySize) :
+                            null;
+
+                    message = SocketResponse.TextMessage(data);
+                }
+                else if (result.MessageType == WebSocketMessageType.Close)
+                {
+                    _logger.LogTrace("Received close message");
+
+                    if (!IsStarted || _stopping)
+                    {
+                        return;
+                    }
+
+                    var info = DisconnectionInfo.Create(DisconnectionType.ByServer, client, null);
+                    _disconnectedSubject.OnNext(info);
+
+                    if (info.CancelClosing)
+                    {
+                        // closing canceled, reconnect if enabled
+                        if (IsReconnectionEnabled)
+                        {
+                            throw new OperationCanceledException("Websocket connection was closed by server");
+                        }
+
+                        continue;
+                    }
+
+                    await StopInternal(client, WebSocketCloseStatus.NormalClosure, "Closing", false, true, token);
+
+                    // reconnect if enabled
+                    if (IsReconnectionEnabled && !ShouldIgnoreReconnection(client))
+                    {
+                        _ = ReconnectSynchronized(ReconnectionType.Lost, false, null);
+                    }
+
+                    return;
+                }
+                else
+                {
+                    if (ms != null)
+                    {
+                        message = SocketResponse.BinaryMessage(ms.ToArray());
+                    }
+                    else
+                    {
+                        Array.Resize(ref resultArrayWithTrailing, resultArraySize);
+                        message = SocketResponse.BinaryMessage(resultArrayWithTrailing);
+                    }
+                }
+
+                ms?.Dispose();
+
+                _logger.LogTrace("Received:  [{message}]", message);
+                _lastReceivedMsg = DateTime.UtcNow;
+                _messageReceivedSubject.OnNext(message);
+
+            } while (client.State == WebSocketState.Open && !token.IsCancellationRequested);
+
+        }
+        catch (TaskCanceledException e)
+        {
+            // task was canceled, ignore
+            causedException = e;
+        }
+        catch (OperationCanceledException e)
+        {
+            // operation was canceled, ignore
+            causedException = e;
+        }
+        catch (ObjectDisposedException e)
+        {
+            // client was disposed, ignore
+            causedException = e;
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e, "Error while listening to websocket stream, ");
+            causedException = e;
+        }
+        if (ShouldIgnoreReconnection(client) || !IsStarted)
+            return;
+        _ = ReconnectSynchronized(ReconnectionType.Lost, false, causedException);
+    }
 
 
 
-
-
-
-
-
-
-
-
+    private bool IsClientConnected() => _client?.State == WebSocketState.Open;
+    private bool ShouldIgnoreReconnection(WebSocket client)
+    {
+        var inProgress = _disposing || _reconnecting || _stopping;
+        var differentClient = client != _client;
+        return inProgress || differentClient;
+    }
     private static DisconnectionType TranslateTypeToDisconnection(ReconnectionType type)
     {
         // beware enum indexes must correspond to each other
@@ -259,35 +411,35 @@ internal partial class DiscordWebsocketClient : IDiscordWebSocketClient
 
 
     #region IDisposable
-    private bool _disposed;
-
-    protected virtual void Dispose(bool disposing)
-    {
-        if (!_disposed)
-        {
-            if (disposing)
-            {
-                // TODO: dispose managed state (managed objects)
-            }
-
-            // TODO: free unmanaged resources (unmanaged objects) and override finalizer
-            // TODO: set large fields to null
-            _disposed = true;
-        }
-    }
-
-    // // TODO: override finalizer only if 'Dispose(bool disposing)' has code to free unmanaged resources
-    // ~DiscordWebsocketClient()
-    // {
-    //     // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
-    //     Dispose(disposing: false);
-    // }
+    private bool _disposing;
 
     public void Dispose()
     {
-        // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
-        Dispose(disposing: true);
-        GC.SuppressFinalize(this);
+        _disposing = true;
+        _logger.LogDebug("Disposing Client");
+        try
+        {
+            _messagesTextToSendQueue?.Writer.Complete();
+            _messagesBinaryToSendQueue?.Writer.Complete();
+            _lastChanceTimer?.Dispose();
+            _cancellation?.Cancel();
+            _cancellationTotal?.Cancel();
+            _client?.Abort();
+            _client?.Dispose();
+            _cancellation?.Dispose();
+            _cancellationTotal?.Dispose();
+            _messageReceivedSubject.OnCompleted();
+            _reconnectionSubject.OnCompleted();
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e, "Failed to dispose Client");
+        }
+        if (IsRunning)
+            _disconnectedSubject.OnNext(DisconnectionInfo.Create(DisconnectionType.Exit, _client!, null));
+        IsRunning = false;
+        IsStarted = false;
+        _disconnectedSubject.OnCompleted();
     }
 
     #endregion
