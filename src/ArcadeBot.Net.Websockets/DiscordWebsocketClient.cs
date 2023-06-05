@@ -14,7 +14,7 @@ namespace ArcadeBot.Net.Websockets;
 /// <summary>
 /// A simple websocket client with built-in reconnection and error handling
 /// </summary>
-internal partial class DiscordWebsocketClient : IDiscordWebSocketClient
+public partial class DiscordWebsocketClient : IDiscordWebSocketClient
 {
     private readonly ILogger<DiscordWebsocketClient> _logger;
     private readonly AsyncLock _lock = new();
@@ -405,10 +405,13 @@ internal partial class DiscordWebsocketClient : IDiscordWebSocketClient
     }
     private static ClientWebSocket GetSpecificOrThrow(WebSocket? client)
     {
-        if (client is null || client is not ClientWebSocket specific)
-            throw new WebSocketException("Cannot cast 'WebSocket' client to 'ClientWebSocket', " +
-                                         "provide correct type via factory or don't use this property at all.");
-        return specific;
+            if (client == null)
+                return null;
+            var specific = client as ClientWebSocket;
+            if (specific == null)
+                throw new WebSocketException("Cannot cast 'WebSocket' client to 'ClientWebSocket', " +
+                                             "provide correct type via factory or don't use this property at all.");
+            return specific;
     }
 
 

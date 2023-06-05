@@ -10,7 +10,7 @@ using System.Net.WebSockets;
 namespace ArcadeBot.Net.Websockets;
 
 /// Sending Logic for <see cref="DiscordWebsocketClient"/>
-internal partial class DiscordWebsocketClient
+public partial class DiscordWebsocketClient
 {
     /// <summary>
     /// Text message queue
