@@ -59,8 +59,8 @@ public class DisconnectionInfo
     /// <summary>
     /// Simple factory method
     /// </summary>
-    public static DisconnectionInfo Create(DisconnectionType type, WebSocket client, Exception? exception)
+    public static DisconnectionInfo Create(DisconnectionType type, WebSocket? client, Exception? exception)
     {
-        return new DisconnectionInfo(type, client.CloseStatus, client.CloseStatusDescription, client.SubProtocol, exception);
+        return new DisconnectionInfo(type, client?.CloseStatus, client?.CloseStatusDescription, client?.SubProtocol, exception);
     }
 }

@@ -209,7 +209,7 @@ public partial class DiscordWebsocketClient : IDiscordWebSocketClient
         }
         catch (Exception e)
         {
-            var info = DisconnectionInfo.Create(DisconnectionType.Error, _client!, e);
+            var info = DisconnectionInfo.Create(DisconnectionType.Error, _client, e);
             _disconnectedSubject.OnNext(info);
             if (info.CancelReconnection)
             {
@@ -407,11 +407,10 @@ public partial class DiscordWebsocketClient : IDiscordWebSocketClient
     {
             if (client == null)
                 return null;
-            var specific = client as ClientWebSocket;
-            if (specific == null)
-                throw new WebSocketException("Cannot cast 'WebSocket' client to 'ClientWebSocket', " +
-                                             "provide correct type via factory or don't use this property at all.");
-            return specific;
+        if (client is not ClientWebSocket specific)
+            throw new WebSocketException("Cannot cast 'WebSocket' client to 'ClientWebSocket', " +
+                                         "provide correct type via factory or don't use this property at all.");
+        return specific;
     }
 
 
@@ -446,6 +445,7 @@ public partial class DiscordWebsocketClient : IDiscordWebSocketClient
         IsRunning = false;
         IsStarted = false;
         _disconnectedSubject.OnCompleted();
+        GC.SuppressFinalize(this);
     }
 
     #endregion

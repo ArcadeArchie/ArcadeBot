@@ -488,8 +488,8 @@ public class ConnectionTests
         await client.Reconnect();
         await Task.Delay(100);
 
-        await Assert.ThrowsAsync<WebSocketException>(() => client.Start());
-        await Assert.ThrowsAsync<WebSocketException>(() => client.Stop(WebSocketCloseStatus.Empty, string.Empty));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.Start());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.Stop(WebSocketCloseStatus.Empty, string.Empty));
 
         Assert.Equal(1, messageStreamCompletedCount);
         Assert.Equal(1, reconnectionStreamCompletedCount);

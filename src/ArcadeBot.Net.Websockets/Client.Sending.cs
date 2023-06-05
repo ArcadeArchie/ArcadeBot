@@ -225,6 +225,6 @@ public partial class DiscordWebsocketClient
             return;
         }
         _logger.LogTrace("Sending: [{message}]", message);
-        await _client!.SendAsync(message, WebSocketMessageType.Text, true, _cancellation!.Token).ConfigureAwait(false);
+        await _client!.SendAsync(message, WebSocketMessageType.Binary, true, _cancellation!.Token).ConfigureAwait(false);
     }
 }
