@@ -10,5 +10,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
-
+  <ItemGroup>
+    <Content Remove="Old\**" />
+    <Compile Remove="Old\**" />
+    <EmbeddedResource Remove="Old\**" />
+    <None Remove="Old\**" />
+  </ItemGroup>
 </Project>
