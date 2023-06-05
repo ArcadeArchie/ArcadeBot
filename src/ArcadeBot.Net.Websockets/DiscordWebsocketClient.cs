@@ -75,7 +75,7 @@ public partial class DiscordWebsocketClient : IDiscordWebSocketClient
         }
     }
 
-    public ClientWebSocket NativeClient => GetSpecificOrThrow(_client);
+    public ClientWebSocket? NativeClient => GetSpecificOrThrow(_client);
 
 
     public DiscordWebsocketClient(ILogger<DiscordWebsocketClient> logger, Uri url, Func<ClientWebSocket>? clientFactory = null) : this(logger, url, GetFactory(clientFactory)) { }
@@ -403,7 +403,7 @@ public partial class DiscordWebsocketClient : IDiscordWebSocketClient
             return client;
         };
     }
-    private static ClientWebSocket GetSpecificOrThrow(WebSocket? client)
+    private static ClientWebSocket? GetSpecificOrThrow(WebSocket? client)
     {
             if (client == null)
                 return null;

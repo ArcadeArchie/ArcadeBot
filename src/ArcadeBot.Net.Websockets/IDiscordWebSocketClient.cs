@@ -69,7 +69,7 @@ public interface IDiscordWebSocketClient : IDisposable
     /// Returns currently used native websocket client.
     /// Use with caution, on every reconnection there will be a new instance. 
     /// </summary>
-    ClientWebSocket NativeClient { get; }
+    ClientWebSocket? NativeClient { get; }
 
     /// <summary>
     /// Sets used encoding for sending and receiving text messages. 
