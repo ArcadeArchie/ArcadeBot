@@ -2,8 +2,6 @@ using System.Net.WebSockets;
 using System.Reactive.Linq;
 using ArcadeBot.Net.Websockets;
 using ArcadeBot.Net.Websockets.Models;
-using ArcadeBot.NetTests.WebSockets.TestServer;
-using Xunit.Abstractions;
 
 namespace ArcadeBot.NetTests.WebSockets;
 

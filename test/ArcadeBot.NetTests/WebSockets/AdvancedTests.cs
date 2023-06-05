@@ -1,11 +1,5 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Net.WebSockets;
-using System.Threading.Tasks;
 using ArcadeBot.Net.Websockets;
-using ArcadeBot.NetTests.WebSockets.TestServer;
-using Xunit.Abstractions;
 
 namespace ArcadeBot.NetTests.WebSockets;
 

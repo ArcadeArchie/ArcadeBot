@@ -1,12 +1,7 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using ArcadeBot.Net.Websockets;
 using Microsoft.AspNetCore.TestHost;
 using Moq;
 using Serilog;
-using Xunit.Abstractions;
 
 namespace ArcadeBot.NetTests.WebSockets.TestServer;
 
