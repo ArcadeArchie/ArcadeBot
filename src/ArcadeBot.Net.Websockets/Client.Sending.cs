@@ -84,7 +84,12 @@ public partial class DiscordWebsocketClient
     /// Use for testing purposes to simulate a server message. 
     /// </summary>
     /// <param name="message">Message to be stream</param>
-    public void StreamFakeMessage(SocketResponse message) => _messageReceivedSubject.OnNext(message);
+    /// <remarks>Even though its accepts a nullable, it will throw a <see cref="ArgumentNullException"/> if <paramref name="message"/> is null </remarks>
+    public void StreamFakeMessage(SocketResponse? message)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        _messageReceivedSubject.OnNext(message);
+    }
 
 
     /// <summary>
@@ -118,7 +123,7 @@ public partial class DiscordWebsocketClient
             StartTextSendThread();
         }
     }
-    
+
     /// <summary>
     /// Read the binary message queue and send messages to remote 
     /// </summary>
@@ -207,7 +212,7 @@ public partial class DiscordWebsocketClient
         var messageBytes = MessageEncoding.GetBytes(message);
         await _client!.SendAsync(messageBytes, WebSocketMessageType.Text, true, _cancellation!.Token).ConfigureAwait(false);
     }
-    
+
     /// <summary>
     /// Asynchronously send binary message over the websocket
     /// </summary>
