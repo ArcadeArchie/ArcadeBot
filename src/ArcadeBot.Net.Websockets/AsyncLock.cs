@@ -19,7 +19,7 @@ namespace ArcadeBot.Net.Websockets;
 internal sealed class AsyncLock
 {
     private readonly Task<IDisposable> _releaserTask;
-    private readonly SemaphoreSlim _semaphore = new SemaphoreSlim(1, 1);
+    private readonly SemaphoreSlim _semaphore = new(1, 1);
     private readonly IDisposable _releaser;
 
     public AsyncLock()
@@ -57,6 +57,6 @@ internal sealed class AsyncLock
         {
             _semaphore = semaphore;
         }
-        public void Dispose() => _semaphore.Dispose();
+        public void Dispose() => _semaphore.Release();
     }
 }
