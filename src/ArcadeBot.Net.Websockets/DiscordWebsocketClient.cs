@@ -11,6 +11,9 @@ using Microsoft.Extensions.Logging;
 
 namespace ArcadeBot.Net.Websockets;
 
+/// <summary>
+/// A simple websocket client with built-in reconnection and error handling
+/// </summary>
 internal partial class DiscordWebsocketClient : IDiscordWebSocketClient
 {
     private readonly ILogger<DiscordWebsocketClient> _logger;

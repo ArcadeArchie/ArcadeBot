@@ -7,13 +7,28 @@ using Microsoft.Extensions.Logging;
 
 namespace ArcadeBot.Net.Websockets;
 
+///Reconnect Logic for <see cref="DiscordWebsocketClient"/>
 internal partial class DiscordWebsocketClient
 {
 
+    /// <summary>
+    /// Force reconnection. 
+    /// Closes current websocket stream and perform a new connection to the server.
+    /// </summary>
+    /// <remarks>In case of connection error it doesn't throw an exception, but tries to reconnect indefinitely. </remarks>
     public Task Reconnect() => ReconnectInternal(false);
 
+    /// <summary>
+    /// Force reconnection. 
+    /// Closes current websocket stream and perform a new connection to the server.
+    /// </summary>
+    /// <remarks>In case of connection error it throws an exception and doesn't perform any other reconnection try. </remarks>
     public Task ReconnectOrFail() => ReconnectInternal(true);
 
+    /// <summary>
+    /// Closes current websocket stream and perform a new connection to the server.
+    /// </summary>
+    /// <param name="fastFail">Throw exception if connection fails</param>
     private async Task ReconnectInternal(bool fastFail)
     {
         if (!IsStarted)
@@ -32,17 +47,26 @@ internal partial class DiscordWebsocketClient
         }
     }
 
-
+    /// <summary>
+    /// Disable missed message detection
+    /// </summary>
     private void DeactivateLastChance()
     {
         _lastChanceTimer?.Dispose();
         _lastChanceTimer = null;
     }
+    /// <summary>
+    /// Enable missed message detection
+    /// </summary>
     private void ActivateLastChance()
     {
         var timerMs = 1000 * 1;
         _lastChanceTimer = new Timer(LastChance, null, timerMs, timerMs);
     }
+    /// <summary>
+    /// Hard restart the connection if remote hasnt sent a message in <see cref="ReconnectTimeout"/> 
+    /// </summary>
+    /// <param name="state"></param>
     private void LastChance(object? state)
     {
         if (!IsReconnectionEnabled || ReconnectTimeout == null)
@@ -63,6 +87,12 @@ internal partial class DiscordWebsocketClient
         }
     }
 
+    /// <summary>
+    /// Reconnect the websocket to the remote end, asynchronously locking it for thread safety
+    /// </summary>
+    /// <param name="type">Reconnect reason</param>
+    /// <param name="failFast">Throw exception if connecting fails</param>
+    /// <param name="causedException">Exception that caused the reconnect</param>
     private async Task ReconnectSynchronized(ReconnectionType type, bool failFast, Exception? causedException)
     {
         using (await _lock.LockAsync())
@@ -70,6 +100,12 @@ internal partial class DiscordWebsocketClient
             await Reconnect(type, failFast, causedException);
         }
     }
+    /// <summary>
+    /// Reconnect the websocket to the remote end
+    /// </summary>
+    /// <param name="type">Reconnect reason</param>
+    /// <param name="failFast">Throw exception if connecting fails</param>
+    /// <param name="causedException">Exception that caused the reconnect</param>
     private async Task Reconnect(ReconnectionType type, bool failFast, Exception? causedException)
     {
         IsRunning = false;

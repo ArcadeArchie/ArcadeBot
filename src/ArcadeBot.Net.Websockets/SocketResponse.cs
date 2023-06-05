@@ -28,9 +28,10 @@ public class SocketResponse
         Binary = binary;
         Text = text;
         MessageType = messageType;
-    }/// <summary>
-     /// Return string info about the message
-     /// </summary>
+    }
+    /// <summary>
+    /// Return string info about the message
+    /// </summary>
     public override string ToString()
     {
         if (MessageType == WebSocketMessageType.Text)

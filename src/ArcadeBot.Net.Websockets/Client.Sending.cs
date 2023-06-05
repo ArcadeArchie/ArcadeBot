@@ -9,25 +9,43 @@ using System.Net.WebSockets;
 
 namespace ArcadeBot.Net.Websockets;
 
+/// Sending Logic for <see cref="DiscordWebsocketClient"/>
 internal partial class DiscordWebsocketClient
 {
+    /// <summary>
+    /// Text message queue
+    /// </summary>
     private readonly Channel<string> _messagesTextToSendQueue = Channel.CreateUnbounded<string>(new UnboundedChannelOptions()
     {
         SingleReader = true,
         SingleWriter = false
     });
+
+    /// <summary>
+    /// Binary message queue
+    /// </summary>
     private readonly Channel<ArraySegment<byte>> _messagesBinaryToSendQueue = Channel.CreateUnbounded<ArraySegment<byte>>(new UnboundedChannelOptions()
     {
         SingleReader = true,
         SingleWriter = false
     });
 
+    /// <summary>
+    /// Post text message to queue to be sent
+    /// </summary>
+    /// <param name="message">UTF8 string text</param>
+    /// <remarks>The sending work is done in a seperate thread</remarks>
     public void Send(string message)
     {
         ArgumentException.ThrowIfNullOrEmpty(message);
         _messagesTextToSendQueue.Writer.TryWrite(message);
     }
 
+    /// <summary>
+    /// Post binary message to queue to be sent
+    /// </summary>
+    /// <param name="message">UTF8 binary message</param>
+    /// <remarks>The sending work is done in a seperate thread</remarks>
     public void Send(byte[] message)
     {
         if (Equals(message, default(byte[])))
@@ -35,6 +53,11 @@ internal partial class DiscordWebsocketClient
         _messagesBinaryToSendQueue.Writer.TryWrite(new ArraySegment<byte>(message));
     }
 
+    /// <summary>
+    /// Post binary message to queue to be sent
+    /// </summary>
+    /// <param name="message">UTF8 binary message</param>
+    /// <remarks>The sending work is done in a seperate thread</remarks>
     public void Send(ArraySegment<byte> message)
     {
         if (Equals(message, default(ArraySegment<byte>)))
@@ -42,14 +65,31 @@ internal partial class DiscordWebsocketClient
         _messagesBinaryToSendQueue.Writer.TryWrite(message);
     }
 
+    /// <summary>
+    /// Instantly send text message bypassing the send queue
+    /// </summary>
+    /// <param name="message">UTF8 text message</param>
+    /// <remarks>Beware of the issue when sending two messages at once</remarks>
     public Task SendInstant(string message) => SendInternalSynchronized(message);
 
+    /// <summary>
+    /// Instantly send binary message bypassing the send queue
+    /// </summary>
+    /// <param name="message">UTF8 binary message</param>
+    /// <remarks>Beware of the issue when sending two messages at once</remarks>
     public Task SendInstant(byte[] message) => SendInternalSynchronized(new ArraySegment<byte>(message));
 
+    /// <summary>
+    /// Stream/publish fake message (via 'MessageReceived' observable).
+    /// Use for testing purposes to simulate a server message. 
+    /// </summary>
+    /// <param name="message">Message to be stream</param>
     public void StreamFakeMessage(SocketResponse message) => _messageReceivedSubject.OnNext(message);
 
 
-
+    /// <summary>
+    /// Read the text message queue and send messages to remote 
+    /// </summary>
     private async Task SendTextFromQueue()
     {
         try
@@ -78,6 +118,10 @@ internal partial class DiscordWebsocketClient
             StartTextSendThread();
         }
     }
+    
+    /// <summary>
+    /// Read the binary message queue and send messages to remote 
+    /// </summary>
     private async Task SendBinaryFromQueue()
     {
         try
@@ -107,11 +151,17 @@ internal partial class DiscordWebsocketClient
         }
     }
 
+    /// <summary>
+    /// Start the Send thread for Text messages
+    /// </summary>
     private void StartTextSendThread()
     {
         _ = Task.Factory.StartNew(_ => SendTextFromQueue(), TaskCreationOptions.LongRunning, _cancellationTotal!.Token);
     }
 
+    /// <summary>
+    /// Start the Send thread for Binary messages
+    /// </summary>
     private void StartBinarySendThread()
     {
         _ = Task.Factory.StartNew(_ => SendBinaryFromQueue(), TaskCreationOptions.LongRunning, _cancellationTotal!.Token);
@@ -119,7 +169,10 @@ internal partial class DiscordWebsocketClient
 
 
 
-
+    /// <summary>
+    /// Send text message over the websocket, asynchronously locking it for thread safety
+    /// </summary>
+    /// <param name="message">UTF8 text message</param>
     private async Task SendInternalSynchronized(string message)
     {
         using (await _lock.LockAsync())
@@ -127,6 +180,10 @@ internal partial class DiscordWebsocketClient
             await SendInternal(message);
         }
     }
+    /// <summary>
+    /// Send binary message over the websocket, asynchronously locking it for thread safety
+    /// </summary>
+    /// <param name="message">UTF8 binary message</param>
     private async Task SendInternalSynchronized(ArraySegment<byte> message)
     {
         using (await _lock.LockAsync())
@@ -135,6 +192,10 @@ internal partial class DiscordWebsocketClient
         }
     }
 
+    /// <summary>
+    /// Asynchronously send text message over the websocket
+    /// </summary>
+    /// <param name="message">UTF8 text message</param>
     private async Task SendInternal(string message)
     {
         if (!IsClientConnected())
@@ -146,8 +207,13 @@ internal partial class DiscordWebsocketClient
         var messageBytes = MessageEncoding.GetBytes(message);
         await _client!.SendAsync(messageBytes, WebSocketMessageType.Text, true, _cancellation!.Token).ConfigureAwait(false);
     }
+    
+    /// <summary>
+    /// Asynchronously send binary message over the websocket
+    /// </summary>
+    /// <param name="message">UTF8 binary message</param>
     private async Task SendInternal(ArraySegment<byte> message)
-    {        
+    {
         if (!IsClientConnected())
         {
             _logger.LogDebug("Client not connected to remote, cant send message: [{message}]", message);
