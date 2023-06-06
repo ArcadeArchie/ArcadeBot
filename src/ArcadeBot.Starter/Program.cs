@@ -1,4 +1,3 @@
-using ArcadeBot.Core;
 using ArcadeBot.Net.Websockets;
 using Serilog;
 
@@ -9,7 +8,7 @@ public class Program
     public static async Task Main(string[] args)
     {
         Log.Logger = new LoggerConfiguration()
-        .MinimumLevel.Debug()
+        .MinimumLevel.Verbose()
         .Enrich.FromLogContext()
         .WriteTo.File("Debug.log", Serilog.Events.LogEventLevel.Debug, 
         rollingInterval: RollingInterval.Hour,
@@ -20,12 +19,7 @@ public class Program
             .UseSerilog()
             .ConfigureServices((ctx, services) =>
             {
-                services
-                .AddMediator()
-                .AddSingleton(new Uri(Constants.WSSUrl + "/?v=10&encoding=json"))
-                .AddScoped<DiscordWebsocketClient>()
-                .AddScoped<ConnectionManager>();
-                // .AddDiscordWebsockets(ctx.Configuration.GetSection("Bot"));
+                services.AddDiscordWebsockets(ctx.Configuration.GetSection("Bot"));
                 services.AddHostedService<Worker>();
             })
             .Build();

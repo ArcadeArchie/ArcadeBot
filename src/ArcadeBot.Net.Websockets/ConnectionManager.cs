@@ -6,27 +6,33 @@ using System.Net.WebSockets;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading.Tasks;
+using ArcadeBot.Core;
 using ArcadeBot.Net.Websockets.Models;
+using ArcadeBot.Net.Websockets.Models.Gateway.Events;
 using ArcadeBot.Net.WebSockets;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace ArcadeBot.Net.Websockets;
 
 public class ConnectionManager : IDisposable
 {
     private readonly ILogger<ConnectionManager> _logger;
-    private readonly Subject<DiscordGatewayMessage?> _gatewayEvent = new();
     private readonly DiscordWebsocketClient _discordGatewayClient;
+    private readonly BotOptions _config;
+    private readonly Subject<DiscordGatewayMessage?> _gatewayEvent = new();
     private CancellationTokenSource? _heartbeatToken;
     private bool disposedValue;
 
     public IObservable<DiscordGatewayMessage?> GatewayEvent => _gatewayEvent.AsObservable();
 
-    public ConnectionManager(DiscordWebsocketClient discordGatewayClient, ILogger<ConnectionManager> logger)
+    public ConnectionManager(ILogger<ConnectionManager> logger, IOptions<BotOptions> botConfig, DiscordWebsocketClient discordGatewayClient)
     {
         _logger = logger;
         _discordGatewayClient = discordGatewayClient;
+        _config = botConfig.Value;
         RegisterEvents();
     }
 
@@ -45,7 +51,7 @@ public class ConnectionManager : IDisposable
         GatewayEvent.Where(x => x?.OpCode is DTO.OpCodes.Gateway.Hello).Subscribe(async msg =>
         {
             await SendIdentify();
-            HandleHeartBeat(msg!);
+            HandleHeartBeat(msg?.EventData.Deserialize<HelloEvent>());
         });
         GatewayEvent.Where(x => x?.OpCode is not DTO.OpCodes.Gateway.Hello).Subscribe(msg =>
                         _logger.LogTrace("Received: [{msg}]", msg));
@@ -81,7 +87,7 @@ public class ConnectionManager : IDisposable
         if (compressed.ReadByte() != 0x78 || compressed.ReadByte() != 0x9C)//zlib header
             throw new InvalidOperationException("Incorrect zlib header");
         using var deflate = new DeflateStream(compressed, CompressionMode.Decompress);
-        
+
         using var sr = new StreamReader(deflate);
         return await sr.ReadToEndAsync();
     }
@@ -113,14 +119,31 @@ public class ConnectionManager : IDisposable
 
     private Task SendIdentify()
     {
-        var intents = (int)((GatewayIntents.AllUnprivileged & ~(GatewayIntents.GuildScheduledEvents | GatewayIntents.GuildInvites)) |
-            GatewayIntents.GuildMembers | GatewayIntents.GuildMessages | GatewayIntents.MessageContent);
-        return _discordGatewayClient.SendInstant("{ \"op\": 2, \"d\": { \"token\": \"\", \"properties\": { \"os\": \"linux\", \"browser\": \"disco\", \"device\": \"disco\" }, \"compress\": true, \"large_threshold\": 250, \"shard\": [0, 1], \"presence\": { \"activities\": [{ \"name\": \"Being reworked from scratch\", \"type\": 0 }], \"status\": \"dnd\", \"since\": 0, \"afk\": false }, \"intents\": " + intents + " } }");
+        var intents = (GatewayIntents.AllUnprivileged & ~(GatewayIntents.GuildScheduledEvents | GatewayIntents.GuildInvites)) |
+            GatewayIntents.GuildMembers | GatewayIntents.GuildMessages | GatewayIntents.MessageContent;
+        var message = new DiscordGatewayMessage
+        {
+            OpCode = DTO.OpCodes.Gateway.Identify,
+            EventData = JsonValue.Create(new IdentifyEvent(
+                _config.Token,
+                new Dictionary<string, string>
+                {
+                    ["os"] = "Windwos",
+                    ["browser"] = ".NET",
+                    ["device"] = ".NET"
+                },
+                intents,
+                true, 50, new[] { 0, 1 },
+                new PresenceUpdateParams("dnd", 0, false, new List<Activity> { new Activity(0, 0, "Being reworked from scratch", "Being reworked from scratch") })
+            ))
+        };
+        return _discordGatewayClient.SendInstant(message);
     }
 
-    private void HandleHeartBeat(DiscordGatewayMessage msg)
+    private void HandleHeartBeat(HelloEvent? args)
     {
-        _ = Task.Factory.StartNew(_ => SendHeartBeat(msg.EventData!["heartbeat_interval"]!.GetValue<int>()), TaskCreationOptions.LongRunning, _heartbeatToken!.Token);
+        ArgumentNullException.ThrowIfNull(args);
+        _ = Task.Factory.StartNew(_ => SendHeartBeat(args.Interval), TaskCreationOptions.LongRunning, _heartbeatToken!.Token);
     }
 
     private async Task SendHeartBeat(int delay)
