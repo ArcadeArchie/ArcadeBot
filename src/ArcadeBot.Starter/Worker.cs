@@ -1,20 +1,33 @@
+using System.Net.WebSockets;
+using System.Reactive.Linq;
+using System.Text.Json;
+using ArcadeBot.Net.Websockets;
+using ArcadeBot.Net.Websockets.Models;
+using ArcadeBot.Net.WebSockets;
+using Microsoft.AspNetCore.Components.Forms;
+
 namespace ArcadeBot.Starter;
 
-public class Worker : BackgroundService
+public sealed class Worker : BackgroundService
 {
-    private readonly ILogger<Worker> _logger;
+    private readonly ConnectionManager _client;
+    private readonly IServiceScope _workerScope;
 
-    public Worker(ILogger<Worker> logger)
+    public Worker(IServiceProvider services)
     {
-        _logger = logger;
+        _workerScope = services.CreateScope();
+        _client = _workerScope.ServiceProvider.GetRequiredService<ConnectionManager>();
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            _logger.LogInformation("Worker running at: {time}", DateTimeOffset.Now);
-            await Task.Delay(1000, stoppingToken);
-        }
+        await _client.StartAsync(stoppingToken);
+    }
+
+    public override void Dispose()
+    {
+        base.Dispose();
+        _client.Dispose();
+        _workerScope.Dispose();
     }
 }

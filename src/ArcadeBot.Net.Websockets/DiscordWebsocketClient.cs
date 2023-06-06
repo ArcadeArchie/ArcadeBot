@@ -152,7 +152,7 @@ public partial class DiscordWebsocketClient : IDiscordWebSocketClient
         }
         if (!IsRunning)
         {
-            _logger.LogInformation("Client is already stopped");
+            _logger.LogDebug("Client is already stopped");
             IsStarted = false;
             return false;
         }
