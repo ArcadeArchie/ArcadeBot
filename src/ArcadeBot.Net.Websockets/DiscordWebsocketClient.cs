@@ -405,8 +405,8 @@ public partial class DiscordWebsocketClient : IDiscordWebSocketClient
     }
     private static ClientWebSocket? GetSpecificOrThrow(WebSocket? client)
     {
-            if (client == null)
-                return null;
+        if (client == null)
+            return null;
         if (client is not ClientWebSocket specific)
             throw new WebSocketException("Cannot cast 'WebSocket' client to 'ClientWebSocket', " +
                                          "provide correct type via factory or don't use this property at all.");
@@ -418,33 +418,45 @@ public partial class DiscordWebsocketClient : IDiscordWebSocketClient
     #region IDisposable
     private bool _disposing;
 
+    protected virtual void Dispose(bool disposing)
+    {
+        if (!_disposing)
+        {
+            _disposing = true;
+            if (disposing)
+            {
+                _logger.LogDebug("Disposing Client");
+                try
+                {
+                    _messagesTextToSendQueue?.Writer.TryComplete();
+                    _messagesBinaryToSendQueue?.Writer.TryComplete();
+                    _cancellation?.Cancel();
+                    _cancellationTotal?.Cancel();
+                    _client?.Abort();
+                    _client?.Dispose();
+                    _lastChanceTimer?.Dispose();
+                    _cancellation?.Dispose();
+                    _cancellationTotal?.Dispose();
+                    _messageReceivedSubject.OnCompleted();
+                    _reconnectionSubject.OnCompleted();
+                }
+                catch (Exception e)
+                {
+                    _logger.LogError(e, "Failed to dispose Client");
+                }
+                if (IsRunning)
+                    _disconnectedSubject.OnNext(DisconnectionInfo.Create(DisconnectionType.Exit, _client!, null));
+                IsRunning = false;
+                IsStarted = false;
+                _disconnectedSubject.OnCompleted();
+            }
+        }
+    }
+
     public void Dispose()
     {
-        _disposing = true;
-        _logger.LogDebug("Disposing Client");
-        try
-        {
-            _messagesTextToSendQueue?.Writer.Complete();
-            _messagesBinaryToSendQueue?.Writer.Complete();
-            _lastChanceTimer?.Dispose();
-            _cancellation?.Cancel();
-            _cancellationTotal?.Cancel();
-            _client?.Abort();
-            _client?.Dispose();
-            _cancellation?.Dispose();
-            _cancellationTotal?.Dispose();
-            _messageReceivedSubject.OnCompleted();
-            _reconnectionSubject.OnCompleted();
-        }
-        catch (Exception e)
-        {
-            _logger.LogError(e, "Failed to dispose Client");
-        }
-        if (IsRunning)
-            _disconnectedSubject.OnNext(DisconnectionInfo.Create(DisconnectionType.Exit, _client!, null));
-        IsRunning = false;
-        IsStarted = false;
-        _disconnectedSubject.OnCompleted();
+        // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
+        Dispose(disposing: true);
         GC.SuppressFinalize(this);
     }
 
