@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Net.WebSockets;
 using System.Text;
 using ArcadeBot.Net.Websockets;
@@ -9,6 +10,7 @@ namespace ArcadeBot.NetTests.WebSockets.TestServer;
 
 public class SimpleStartup
 {
+    [SuppressMessage("Microsoft.Reliability", "IDE0060", Justification = "Required boilerplate")]
     public void ConfigureServices(IServiceCollection services)
     {
 
@@ -63,19 +65,14 @@ public class SimpleStartup
     {
         var msg = (request.Text ?? string.Empty).Trim().ToLower();
 
-        switch (msg)
+        return msg switch
         {
-            case "ping":
-                return SendResponse(webSocket, SocketResponse.TextMessage("pong"));
-            case not null when msg.StartsWith("echo_fast"):
-                return SendEcho(webSocket, request.Text!, false);
-            case not null when msg.StartsWith("echo"):
-                return SendEcho(webSocket, request.Text!, true);
-            case "close-me":
-                return webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "normal closure", CancellationToken.None);
-        }
-
-        throw new NotSupportedException($"Request: '{msg}' is not supported");
+            "ping" => SendResponse(webSocket, SocketResponse.TextMessage("pong")),
+            not null when msg.StartsWith("echo_fast") => SendEcho(webSocket, request.Text!, false),
+            not null when msg.StartsWith("echo") => SendEcho(webSocket, request.Text!, true),
+            "close-me" => webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "normal closure", CancellationToken.None),
+            _ => throw new NotSupportedException($"Request: '{msg}' is not supported"),
+        };
     }
 
     protected virtual Task HandleBinaryRequest(WebSocket webSocket, HttpContext context, SocketResponse request)

@@ -20,7 +20,7 @@ public class TestContext<TStartup> where TStartup : class
     }
     public DiscordWebsocketClient CreateClient()
     {
-        var httpClient = _factory.CreateClient(); // This is needed since _factory.Server would otherwise be null
+        _ = _factory.CreateClient(); // This is needed since _factory.Server would otherwise be null
         return CreateClient(_factory.Server.BaseAddress);
     }
 
