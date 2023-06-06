@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -17,6 +18,7 @@ namespace ArcadeBot.Core.Threading;
 /// }
 /// </code>
 /// </summary>
+[SuppressMessage("IDisposableAnalyzers.Correctness", "IDISP006:Implement IDisposable", Justification = "_releaser gets disposed through the intended usage")]
 public sealed class AsyncLock
 {
     private readonly Task<IDisposable> _releaserTask;
@@ -51,7 +53,7 @@ public sealed class AsyncLock
     }
 
 
-    private class Releaser : IDisposable
+    private sealed class Releaser : IDisposable
     {
         private readonly SemaphoreSlim _semaphore;
         public Releaser(SemaphoreSlim semaphore)
