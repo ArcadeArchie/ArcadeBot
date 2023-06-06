@@ -1,243 +1,169 @@
-using System.Collections.Concurrent;
-using System.Net.Sockets;
+using System;
+using System.Collections.Generic;
+using System.IO.Compression;
+using System.Linq;
+using System.Net.WebSockets;
+using System.Reactive.Linq;
+using System.Reactive.Subjects;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Text.Json.Serialization;
-using ArcadeBot.Converters;
+using System.Threading.Tasks;
 using ArcadeBot.Core;
-using ArcadeBot.DTO;
-using ArcadeBot.DTO.Gateway;
-using Mediator;
+using ArcadeBot.Net.Websockets.Models;
+using ArcadeBot.Net.Websockets.Models.Gateway.Events;
+using ArcadeBot.Net.WebSockets;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace ArcadeBot.Net.WebSockets
+namespace ArcadeBot.Net.Websockets;
+
+public class ConnectionManager : IDisposable
 {
-    public class ConnectionManager : IDisposable
+    private readonly ILogger<ConnectionManager> _logger;
+    private readonly DiscordWebsocketClient _discordGatewayClient;
+    private readonly BotOptions _config;
+    private readonly Subject<DiscordGatewayMessage?> _gatewayEvent = new();
+    private CancellationTokenSource? _heartbeatToken;
+    private bool disposedValue;
+
+    public IObservable<DiscordGatewayMessage?> GatewayEvent => _gatewayEvent.AsObservable();
+
+    public ConnectionManager(ILogger<ConnectionManager> logger, IOptions<BotOptions> botConfig, DiscordWebsocketClient discordGatewayClient)
     {
-        public int Latency { get; protected set; }
-        public CancellationToken CancelToken { get; private set; }
+        _logger = logger;
+        _discordGatewayClient = discordGatewayClient;
+        _config = botConfig.Value;
+        RegisterEvents();
+    }
 
-        private readonly ILogger<ConnectionManager> _logger;
-        private readonly DiscordWebsocketClient _clientSocket;
-        private readonly IMediator _mediator;
-        private readonly ConcurrentQueue<long> _heartbeatTimes;
-        private readonly BotOptions _botConfig;
-        private readonly JsonSerializerOptions _serializerOptions = new JsonSerializerOptions
+    private void RegisterEvents()
+    {
+        _discordGatewayClient.ReconnectionHappened.Subscribe(info =>
         {
-            NumberHandling = JsonNumberHandling.AllowReadingFromString,
-            Converters = { new GuildFeaturesJsonConverter() }
-        };
-        private Task? _heartbeatTask;
-        private int _lastSeq;
-        private long _lastMessageTime;
-
-        internal ConnectionManager(ILogger<ConnectionManager> logger, DiscordWebsocketClient clientSocket, IMediator mediator, IOptions<BotOptions> botConfig)
-        {
-            _logger = logger;
-            _clientSocket = clientSocket;
-            _mediator = mediator;
-            _botConfig = botConfig.Value;
-            if (string.IsNullOrEmpty(_botConfig.Token))
-                throw new InvalidOperationException("Invalid bot token");
-            _heartbeatTimes = new ConcurrentQueue<long>();
-            _clientSocket.ReceivedGatewayEvent += HandleGatewayEvent;
-        }
-
-        public async Task ConnectAsync(CancellationToken stoppingToken)
-        {
-            CancelToken = stoppingToken;
-            _logger.LogInformation("Connecting");
-            await _clientSocket.ConnectAsync();
-            _logger.LogInformation("Connected");
-            await IdentifyAsync();
-        }
-
-        public async Task DisconnectAsync()
-        {
-            _logger.LogInformation("Disconnecting");
-            await _clientSocket.DisconnectAsync();
-            _logger.LogInformation("Disconnected");
-        }
-
-
-
-        private async Task? StartHeartbeatAsync(int intervalMillis, CancellationToken token)
-        {
-            try
-            {
-                _logger.LogDebug("Heartbeat Started");
-
-                while (!token.IsCancellationRequested)
-                {
-                    int now = Environment.TickCount;
-
-                    if (!_heartbeatTimes.IsEmpty && (now - _lastMessageTime) > intervalMillis)
-                    {
-                        //TODO: handle missed heartbeat 
-                        if (_clientSocket.State == System.Net.WebSockets.WebSocketState.Open)
-                        {
-                            _logger.LogCritical("Server missed last heartbeat");
-                            await ReconnectAsync().ConfigureAwait(false);
-                            return;
-                        }
-                    }
-                    _heartbeatTimes.Enqueue(now);
-                    try
-                    {
-                        await _clientSocket.SendHeartbeatAsync(_lastSeq);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogCritical(ex, "Heartbeat errored");
-                    }
-                    await Task.Delay(intervalMillis, token);
-                }
-                _logger.LogDebug("Heartbeat Stopped");
-            }
-            catch (OperationCanceledException)
-            {
-                _logger.LogDebug("Heartbeat Stopped");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogCritical(ex, "Heartbeat errored");
-            }
-        }
-
-        private async Task ReconnectAsync()
-        {
-            _logger.LogInformation("Reconnecting");
-            await _clientSocket.ConnectAsync();
-            _logger.LogInformation("Reconnected");
-            await IdentifyAsync();
-        }
-
-        private async Task IdentifyAsync()
-        {
-            var identify = new Identify
-            {
-                Token = _botConfig.Token,
-                LargeThreshold = 100,
-                Intents = (int)((GatewayIntents.AllUnprivileged & ~(GatewayIntents.GuildScheduledEvents | GatewayIntents.GuildInvites)) |
-            GatewayIntents.GuildMembers | GatewayIntents.GuildMessages | GatewayIntents.MessageContent),
-                Presence = new PresenceUpdateParams
-                {
-                    Status = "dnd", //https://discord.com/developers/docs/topics/gateway-events#update-presence-status-types
-                    IsAFK = false,
-                    IdleSince = 0,
-                    Activities = new List<Activity> { new Activity { Type = 0, Name = "Being reworked from scratch", Details = "Being reworked from scratch", Flags = 0 } }
-                },
-                Properties = new Dictionary<string, string>
-                {
-                    {"device", "CSharp"},
-                    {"os", Environment.OSVersion.Platform.ToString() },
-                    {"browser", "CSharp"},
-                },
-                ShardingParams = new[] { 0, 1 }
-            };
-            var message = new SocketFrame
-            {
-                OpCode = OpCodes.Gateway.Identify,
-                EventData = JsonValue.Create(identify)
-            };
-            await _clientSocket.SendAsync(message);
-        }
-
-
-        #region EventHandlers
-
-
-        private Task HandleGatewayEvent(SocketFrame message)
-        {
-            if (message!.Sequence != null)
-                _lastSeq = message.Sequence.Value;
-            _lastMessageTime = Environment.TickCount;
-            if (_heartbeatTask != null && message.OpCode == OpCodes.Gateway.Hello)// hotfix send re-identify
-                return IdentifyAsync();
-            if (message.OpCode == OpCodes.Gateway.Hello || message.OpCode == OpCodes.Gateway.HeartbeatACK)
-            {
-                return HeartBeat();
-            }
-
-            if (message.OpCode == OpCodes.Gateway.Dispatch)
-                return Dispatch();
-
-            return Task.CompletedTask;
-
-            Task Dispatch()
-            {
-                if (message.EventData != null)
-                {
-                    object? eventData = message.EventName switch
-                    {
-                        // "READY" => message.EventData.ToJsonString(),
-                        "GUILD_CREATE" => message.EventData.Deserialize<ExtendedGuild>(_serializerOptions), // do deserialization to proper DTOs
-                        _ => message.EventData.ToJsonString()
-                    };
-                    _logger.LogDebug("Dispatch recieved, eventName: [{name}], eventData: [{data}]", message.EventName, eventData);
-                }
-                return Task.CompletedTask;
-            }
-
-
-            Task HeartBeat()
-            {
-                switch (message!.OpCode)
-                {
-                    case OpCodes.Gateway.Hello:
-                        HandleHeartbeat(message?.EventData?.Deserialize<HelloEvent>());
-                        break;
-                    case OpCodes.Gateway.HeartbeatACK:
-                        HandleHeartbeat();
-                        break;
-                }
-                return Task.CompletedTask;
-            }
-        }
-
-
-        private void HandleHeartbeat(HelloEvent? eventArgs = null)
-        {
-            if (eventArgs is not null)
-            {
-                _logger.LogDebug("Recieved Hello");
-                _heartbeatTask ??= StartHeartbeatAsync(eventArgs.Interval, CancelToken);
+            if (info.Type is ReconnectionType.Initial)
                 return;
-            }
-            if (!_heartbeatTimes.TryDequeue(out long time))
-                return;
-            int latency = (int)(Environment.TickCount - time);
-            int before = Latency;
-            Latency = latency;
-            _logger.LogDebug("[HeartbeatACK]: Latency {latency}, old {oldLatency}", latency, before);
-        }
-        #endregion
-
-
-        #region IDisposable
-        private bool isDisposed;
-        protected virtual void Dispose(bool disposing)
+            _heartbeatToken?.Cancel();
+            _heartbeatToken = new CancellationTokenSource();
+        });
+        _discordGatewayClient
+            .MessageReceived
+            .Select(ParseMessage).Subscribe(async gatewayEvent => _gatewayEvent.OnNext(await gatewayEvent));
+        GatewayEvent.Where(x => x?.OpCode is DTO.OpCodes.Gateway.Hello).Subscribe(async msg =>
         {
-            if (isDisposed)
-                return;
+            await SendIdentify();
+            HandleHeartBeat(msg?.EventData.Deserialize<HelloEvent>());
+        });
+        GatewayEvent.Where(x => x?.OpCode is not DTO.OpCodes.Gateway.Hello).Subscribe(msg =>
+                        _logger.LogTrace("Received: [{msg}]", msg));
+    }
+
+    public async Task StartAsync(CancellationToken stoppingToken)
+    {
+        _heartbeatToken = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+
+        await _discordGatewayClient.Start();
+
+        await Task.Delay(-1, stoppingToken);
+    }
+
+    private async Task<DiscordGatewayMessage?> ParseMessage(SocketResponse socketMsg)
+    {
+        if (socketMsg.MessageType is WebSocketMessageType.Text)
+            return JsonSerializer.Deserialize<DiscordGatewayMessage>(socketMsg.Text!);
+
+        if (socketMsg.MessageType is WebSocketMessageType.Binary)
+        {
+            var str = await DecodeBinMessage(socketMsg.Binary!);
+            return JsonSerializer.Deserialize<DiscordGatewayMessage>(str);
+        }
+        throw new InvalidOperationException("This type of message is not supported");
+    }
+
+    private static async Task<string> DecodeBinMessage(byte[] binaryData)
+    {
+        if (binaryData == null)
+            throw new InvalidOperationException("Data cant be null");
+        using var compressed = new MemoryStream(binaryData);
+        if (compressed.ReadByte() != 0x78 || compressed.ReadByte() != 0x9C)//zlib header
+            throw new InvalidOperationException("Incorrect zlib header");
+        using var deflate = new DeflateStream(compressed, CompressionMode.Decompress);
+
+        using var sr = new StreamReader(deflate);
+        return await sr.ReadToEndAsync();
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (!disposedValue)
+        {
             if (disposing)
             {
-                _clientSocket.Dispose();
-                _heartbeatTask?.Dispose();
+                _heartbeatToken?.Cancel();
+                _heartbeatToken?.Dispose();
+                _discordGatewayClient.Dispose();
+                _gatewayEvent.OnCompleted();
             }
-            isDisposed = true;
-        }
 
-        public void Dispose()
-        {
-            Dispose(true);
-            GC.SuppressFinalize(this);
+            disposedValue = true;
         }
-        ~ConnectionManager()
+    }
+
+    public void Dispose()
+    {
+        // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
+        Dispose(disposing: true);
+        GC.SuppressFinalize(this);
+    }
+
+
+
+    private Task SendIdentify()
+    {
+        var intents = (GatewayIntents.AllUnprivileged & ~(GatewayIntents.GuildScheduledEvents | GatewayIntents.GuildInvites)) |
+            GatewayIntents.GuildMembers | GatewayIntents.GuildMessages | GatewayIntents.MessageContent;
+        var message = new DiscordGatewayMessage
         {
-            Dispose(false);
+            OpCode = DTO.OpCodes.Gateway.Identify,
+            EventData = JsonValue.Create(new IdentifyEvent(
+                _config.Token,
+                new Dictionary<string, string>
+                {
+                    ["os"] = "Windwos",
+                    ["browser"] = ".NET",
+                    ["device"] = ".NET"
+                },
+                intents,
+                true, 50, new[] { 0, 1 },
+                new PresenceUpdateParams("dnd", 0, false, new List<Activity> { new Activity(0, 0, "Being reworked from scratch", "Being reworked from scratch") })
+            ))
+        };
+        return _discordGatewayClient.SendInstant(message);
+    }
+
+    private void HandleHeartBeat(HelloEvent? args)
+    {
+        ArgumentNullException.ThrowIfNull(args);
+        _ = Task.Factory.StartNew(_ => SendHeartBeat(args.Interval), TaskCreationOptions.LongRunning, _heartbeatToken!.Token);
+    }
+
+    private async Task SendHeartBeat(int delay)
+    {
+        try
+        {
+            _logger.LogDebug("Heartbeat Started");
+            while (!_heartbeatToken!.Token.IsCancellationRequested)
+            {
+                await _discordGatewayClient.SendInstant("{ \"op\": 1, \"d\": 0 }");
+                await Task.Delay(delay, _heartbeatToken!.Token);
+            }
         }
-        #endregion
+        catch (TaskCanceledException) { }
+        catch (OperationCanceledException) { }
+        catch (Exception e)
+        {
+            _logger.LogTrace(e, "Sending heartbeat thread failed, Creating new thread");
+            _ = Task.Factory
+                .StartNew(_ => SendHeartBeat(delay), TaskCreationOptions.LongRunning, _heartbeatToken!.Token);
+        }
     }
 }

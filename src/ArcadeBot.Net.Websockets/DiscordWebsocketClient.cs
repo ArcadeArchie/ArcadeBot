@@ -1,300 +1,460 @@
-using System.IO.Compression;
 using System.Net.WebSockets;
+using System.Reactive.Linq;
+using System.Reactive.Subjects;
 using System.Text;
-using System.Text.Json;
-using ArcadeBot.Core;
-using ArcadeBot.DTO;
+using ArcadeBot.Net.Websockets.Models;
 using Microsoft.Extensions.Logging;
+using ArcadeBot.Core.Threading;
+namespace ArcadeBot.Net.Websockets;
 
-namespace ArcadeBot.Net.WebSockets
+/// <summary>
+/// A simple websocket client with built-in reconnection and error handling
+/// </summary>
+public partial class DiscordWebsocketClient : IDiscordWebSocketClient
 {
-    internal class DiscordWebsocketClient : IDisposable
+    private readonly ILogger<DiscordWebsocketClient> _logger;
+    private readonly AsyncLock _lock = new();
+    private readonly Func<Uri, CancellationToken, Task<WebSocket>> _connectionFactory;
+    private readonly Subject<SocketResponse> _messageReceivedSubject = new();
+    private readonly Subject<ReconnectionInfo> _reconnectionSubject = new();
+    private readonly Subject<DisconnectionInfo> _disconnectedSubject = new();
+
+    private Timer? _lastChanceTimer;
+    private DateTime _lastReceivedMsg = DateTime.UtcNow;
+
+    private bool _reconnecting;
+    private bool _stopping;
+    private bool _isReconnectionEnabled = true;
+    private WebSocket? _client;
+    private CancellationTokenSource? _cancellation;
+    private CancellationTokenSource? _cancellationTotal;
+
+    public Uri Url { get; set; }
+
+    public IObservable<SocketResponse> MessageReceived => _messageReceivedSubject.AsObservable();
+
+    public IObservable<ReconnectionInfo> ReconnectionHappened => _reconnectionSubject.AsObservable();
+
+    public IObservable<DisconnectionInfo> DisconnectionHappened => _disconnectedSubject.AsObservable();
+
+    public TimeSpan? ReconnectTimeout { get; set; } = TimeSpan.FromMinutes(1);
+    public TimeSpan? ErrorReconnectTimeout { get; set; } = TimeSpan.FromMinutes(1);
+    private Encoding? _msgEncoding = null;
+    public Encoding MessageEncoding
     {
-        public const int ReceiveChunkSize = 16 * 1024;
-        public const int SendChunkSize = 4 * 1024;
-
-        public event Func<SocketFrame, Task> ReceivedGatewayEvent
+        get
         {
-            add { _receivedGatewayEvent.Add(value); }
-            remove { _receivedGatewayEvent.Remove(value); }
+            _msgEncoding ??= Encoding.UTF8;
+            return _msgEncoding;
         }
-        public WebSocketState State => _clientSocket!.State;
+        set => _msgEncoding = value;
+    }
 
-        private readonly ILogger<DiscordWebsocketClient> _logger;
-        private readonly SemaphoreSlim _lock;
-        private readonly AsyncEvent<Func<SocketFrame, Task>> _receivedGatewayEvent = new();
-        private readonly Uri _remoteSocket;
+    public bool IsStarted { get; private set; }
+    public bool IsRunning { get; private set; }
+    public bool IsTextMessageConversionEnabled { get; set; } = true;
 
-        private ClientWebSocket? _clientSocket;
-        private bool _isDisposed, _isDisconnecting;
-        private Task? _recieveTask;
-        private MemoryStream? _compressed;
-        private DeflateStream? _decompressor;
-        private CancellationTokenSource _disconnectTokenSource;
-        private CancellationTokenSource? _cancelTokenSource;
-        private CancellationToken _cancelToken;
-        private bool _serverSideClose;
-
-        public DiscordWebsocketClient(ILogger<DiscordWebsocketClient> logger, Uri socketUri)
+    public bool IsReconnectionEnabled
+    {
+        get => _isReconnectionEnabled; set
         {
-            _logger = logger;
-            _remoteSocket = socketUri;
-            _lock = new SemaphoreSlim(1, 1);
-            _disconnectTokenSource = new CancellationTokenSource();
-            _cancelToken = CancellationToken.None;
-        }
-        public async Task ConnectAsync()
-        {
-            //Ensure clean connection
-            await DisconnectInternal(false);
-            _isDisconnecting = false;
-            _serverSideClose = false;
-
-            await _lock.WaitAsync().ConfigureAwait(false);
-            _compressed?.Dispose();
-            _decompressor?.Dispose();
-            _compressed = new MemoryStream();
-            _decompressor = new DeflateStream(_compressed, CompressionMode.Decompress);
-
-
-            _disconnectTokenSource = new CancellationTokenSource();
-            _cancelTokenSource = CancellationTokenSource.CreateLinkedTokenSource(_disconnectTokenSource.Token);
-            _cancelToken = _cancelTokenSource.Token;
-
-            _clientSocket = new ClientWebSocket
+            _isReconnectionEnabled = value;
+            if (IsStarted)
             {
-                Options = {
-                    KeepAliveInterval = TimeSpan.Zero
-                }
-            };
-            await _clientSocket.ConnectAsync(_remoteSocket, _cancelToken).ConfigureAwait(false);
+                if (_isReconnectionEnabled)
+                    ActivateLastChance();
+                else
+                    DeactivateLastChance();
 
-            _recieveTask = RecieveLoop(_cancelToken);
-            _lock.Release();
+
+            }
+        }
+    }
+
+    public ClientWebSocket? NativeClient => GetSpecificOrThrow(_client);
+
+
+    public DiscordWebsocketClient(ILogger<DiscordWebsocketClient> logger, Uri url, Func<ClientWebSocket>? clientFactory = null) : this(logger, url, GetFactory(clientFactory)) { }
+    public DiscordWebsocketClient(ILogger<DiscordWebsocketClient> logger, Uri url, Func<Uri, CancellationToken, Task<WebSocket>>? connectionFactory)
+    {
+        _logger = logger;
+        Url = url;
+        _connectionFactory = connectionFactory ?? (async (uri, token) =>
+        {
+            var client = new ClientWebSocket();
+            await client.ConnectAsync(uri, token).ConfigureAwait(false);
+            return client;
+        });
+    }
+
+    #region Start
+    public Task Start() => StartInternal(false);
+    public Task StartOrFail() => StartInternal(true);
+    private async Task StartInternal(bool fastFail)
+    {
+        if (_disposing)
+            throw new InvalidOperationException("The Client has already been disposed");
+        if (IsStarted)
+        {
+            _logger.LogDebug("Client is already running, ignored"); return;
+        }
+        IsStarted = true;
+        _logger.LogDebug("Starting client");
+        _cancellation = new();
+        _cancellationTotal = new();
+        await StartClient(Url, ReconnectionType.Initial, fastFail, _cancellation.Token).ConfigureAwait(false);
+        StartTextSendThread();
+        StartBinarySendThread();
+    }
+
+    #endregion
+
+    #region Stop
+    public async Task<bool> Stop(WebSocketCloseStatus status, string statusDescription)
+    {
+        var result = await StopInternal(
+            _client!,
+            status,
+            statusDescription,
+            false,
+            false, null).ConfigureAwait(false);
+        _disconnectedSubject.OnNext(DisconnectionInfo.Create(DisconnectionType.ByUser, _client!, null));
+        return result;
+    }
+
+    public async Task<bool> StopOrFail(WebSocketCloseStatus status, string statusDescription)
+    {
+        var result = await StopInternal(
+            _client!,
+            status,
+            statusDescription,
+            true,
+            false, null).ConfigureAwait(false);
+        _disconnectedSubject.OnNext(DisconnectionInfo.Create(DisconnectionType.ByUser, _client!, null));
+        return result;
+    }
+
+    private async Task<bool> StopInternal(WebSocket client, WebSocketCloseStatus status, string statusDescription,
+            bool failFast, bool byServer, CancellationToken? cancellation)
+    {
+        if (_disposing)
+            throw new InvalidOperationException("The Client has already been disposed");
+        DeactivateLastChance();
+        if (client == null)
+        {
+            IsStarted = false;
+            IsRunning = false;
+            return false;
+        }
+        if (!IsRunning)
+        {
+            _logger.LogDebug("Client is already stopped");
+            IsStarted = false;
+            return false;
+        }
+        var result = false;
+        try
+        {
+            var cancellationToken = cancellation ?? CancellationToken.None;
+            _stopping = true;
+            if (byServer)
+                await client.CloseOutputAsync(status, statusDescription, cancellationToken);
+            else
+                await client.CloseAsync(status, statusDescription, cancellationToken);
+            result = true;
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e, "Error while stopping client");
+
+            if (failFast)
+            {
+                // fail fast, propagate exception
+                throw new WebSocketException("Failed to stop Websocket client, see inner exception", e);
+            }
+        }
+        finally
+        {
+            IsRunning = false;
+            _stopping = false;
+
+            if (!byServer || !IsReconnectionEnabled)
+            {
+                // stopped manually or no reconnection, mark client as non-started
+                IsStarted = false;
+            }
         }
 
+        return result;
+    }
 
-        private async Task RecieveLoop(CancellationToken token)
+    #endregion
+
+    private async Task StartClient(Uri url, ReconnectionType reconnType, bool fastFail, CancellationToken cancelToken)
+    {
+        DeactivateLastChance();
+        try
         {
-            var recieveBuf = new ArraySegment<byte>(new byte[ReceiveChunkSize]);
-            try
+            _client = await _connectionFactory(url, cancelToken).ConfigureAwait(false);
+            _ = Listen(_client, cancelToken);
+            IsRunning = true;
+            IsStarted = true;
+            _reconnectionSubject.OnNext(ReconnectionInfo.Create(reconnType));
+            _lastReceivedMsg = DateTime.UtcNow;
+            ActivateLastChance();
+        }
+        catch (Exception e)
+        {
+            var info = DisconnectionInfo.Create(DisconnectionType.Error, _client, e);
+            _disconnectedSubject.OnNext(info);
+            if (info.CancelReconnection)
             {
-                ArgumentNullException.ThrowIfNull(_clientSocket);
+                _logger.LogError("Exception while connecting. Canceled by user, exiting. Error: {message}", e.Message);
+                return;
+            }
+            if (fastFail)
+                throw new WebSocketException("Failed to start Websocket, see inner exception", e);
+            if (ErrorReconnectTimeout is null)
+            {
+                _logger.LogError("Exception while connecting. Reconnecting disabled. Error: {message}", e.Message);
+                return;
+            }
+            _logger.LogError("Exception while connecting. Reconnecting after {totalSeconds} seconds. Error: {message}", e.Message, ErrorReconnectTimeout?.TotalSeconds);
+            await Task.Delay(ErrorReconnectTimeout!.Value, cancelToken).ConfigureAwait(false);
+            await Reconnect(ReconnectionType.Error, false, e).ConfigureAwait(false);
+        }
+    }
 
-                while (!token.IsCancellationRequested)
+
+    private async Task Listen(WebSocket client, CancellationToken token)
+    {
+        Exception? causedException = null;
+        try
+        {
+            const int chunkSize = 1024 * 4;
+            var buffer = new ArraySegment<byte>(new byte[chunkSize]);
+            do
+            {
+                WebSocketReceiveResult result;
+                byte[]? resultArrayWithTrailing = null;
+                var resultArraySize = 0;
+                var isResultArrayCloned = false;
+                MemoryStream? ms = null;
+                while (true)
                 {
-                    var socketResult = await _clientSocket.ReceiveAsync(recieveBuf, token).ConfigureAwait(false);
-                    byte[]? result;
-                    int resultCount;
-                    if (socketResult.MessageType == WebSocketMessageType.Close)
+                    result = await client.ReceiveAsync(buffer, token);
+                    var currentChunk = buffer.Array;
+                    var currentChunkSize = result.Count;
+                    var isFirstChunk = resultArrayWithTrailing == null;
+                    if (isFirstChunk)
                     {
-                        throw new GatewayReconnectException(socketResult.CloseStatusDescription ?? "The remote host send a close");
+                        // first chunk, use buffer as reference, do not allocate anything
+                        resultArraySize += currentChunkSize;
+                        resultArrayWithTrailing = currentChunk!;
+                        isResultArrayCloned = false;
                     }
-                    if (socketResult.EndOfMessage)
+                    else if (currentChunk == null)
                     {
-                        result = recieveBuf.Array;
-                        resultCount = socketResult.Count;
+                        // weird chunk, do nothing
                     }
                     else
                     {
-                        using var ms = new MemoryStream();
-                        ms.Write(recieveBuf.Array!, 0, socketResult.Count);
-                        do
+                        // received more chunks, lets merge them via memory stream
+                        if (ms == null)
                         {
-                            if (token.IsCancellationRequested) return;
-                            socketResult = await _clientSocket.ReceiveAsync(recieveBuf, token).ConfigureAwait(false);
-                            ms.Write(recieveBuf.Array!, 0, socketResult.Count);
-                        } while (socketResult == null || !socketResult.EndOfMessage);
-                        result = ms.TryGetBuffer(out var msBuf) ? msBuf.Array : ms.ToArray();
-                        resultCount = (int)ms.Length;
+                            // create memory stream and insert first chunk
+                            ms = new MemoryStream();
+                            ms.Write(resultArrayWithTrailing!, 0, resultArraySize);
+                        }
+
+                        // insert current chunk
+                        ms.Write(currentChunk, buffer.Offset, currentChunkSize);
+                    }
+                    if (result.EndOfMessage)
+                        break;
+
+                    if (isResultArrayCloned)
+                        continue;
+
+                    // we got more chunks incoming, need to clone first chunk
+                    resultArrayWithTrailing = resultArrayWithTrailing?.ToArray();
+                    isResultArrayCloned = true;
+                }
+                ms?.Seek(0, SeekOrigin.Begin);
+
+                SocketResponse message;
+                if (result.MessageType == WebSocketMessageType.Text && IsTextMessageConversionEnabled)
+                {
+                    var data = ms != null ?
+                        MessageEncoding.GetString(ms.ToArray()) :
+                        resultArrayWithTrailing != null ?
+                            MessageEncoding.GetString(resultArrayWithTrailing, 0, resultArraySize) :
+                            null;
+
+                    message = SocketResponse.TextMessage(data);
+                }
+                else if (result.MessageType == WebSocketMessageType.Close)
+                {
+                    _logger.LogTrace("Received close message");
+
+                    if (!IsStarted || _stopping)
+                    {
+                        return;
                     }
 
-                    var message = await DecodeSocketMessage(result, resultCount, socketResult.MessageType);
+                    var info = DisconnectionInfo.Create(DisconnectionType.ByServer, client, null);
+                    _disconnectedSubject.OnNext(info);
 
-                    await _receivedGatewayEvent.InvokeAsync(message).ConfigureAwait(false);
-                }
-            }
-            catch (GatewayReconnectException ex)
-            {
-                _logger.LogCritical(ex, "An error occrued in the recieve loop, closing connection");
-                await DisconnectAsync();
-                await ConnectAsync();
-            }
-            catch (Exception ex)
-            {
-                if (_isDisconnecting) //expected exception
+                    if (info.CancelClosing)
+                    {
+                        // closing canceled, reconnect if enabled
+                        if (IsReconnectionEnabled)
+                        {
+                            throw new OperationCanceledException("Websocket connection was closed by server");
+                        }
+
+                        continue;
+                    }
+
+                    await StopInternal(client, WebSocketCloseStatus.NormalClosure, "Closing", false, true, token);
+
+                    // reconnect if enabled
+                    if (IsReconnectionEnabled && !ShouldIgnoreReconnection(client))
+                    {
+                        _ = ReconnectSynchronized(ReconnectionType.Lost, false, null);
+                    }
+
                     return;
-                await DisconnectAsync();
-                _logger.LogCritical(ex, "An error occrued in the recieve loop, closing connection");
-#if DEBUG
-                throw;
-#endif
-            }
-        }
-
-        #region DisconnectAsync
-
-        public async Task DisconnectAsync(bool isDisposing = false)
-        {
-            await DisconnectInternal(isDisposing);
-        }
-
-        private async Task DisconnectInternal(bool isDisposing)
-        {
-            if (_isDisconnecting)
-                return;
-            await _lock.WaitAsync().ConfigureAwait(false);
-            try
-            {
-                _isDisconnecting = true;
-                if (_clientSocket == null)
-                    return;
-                if (!isDisposing)
+                }
+                else
                 {
-                    if (_serverSideClose) // discord closed the connection
-                        await _clientSocket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "", _cancelToken);
-                    else // we closed the connection
-                        await _clientSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "", _cancelToken);
+                    if (ms != null)
+                    {
+                        message = SocketResponse.BinaryMessage(ms.ToArray());
+                    }
+                    else
+                    {
+                        Array.Resize(ref resultArrayWithTrailing, resultArraySize);
+                        message = SocketResponse.BinaryMessage(resultArrayWithTrailing);
+                    }
                 }
 
-                _clientSocket.Dispose();
-                _clientSocket = null;
+                ms?.Dispose();
 
-                await (_recieveTask ?? Task.Delay(0)).ConfigureAwait(false);
-                _recieveTask = null;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed closing the socket gracefully");
-            }
-            finally
-            {
-                _disconnectTokenSource.Cancel(false);
-                _isDisconnecting = false;
-                _lock.Release();
-            }
+                _logger.LogTrace("Received:  [{message}]", message);
+                _lastReceivedMsg = DateTime.UtcNow;
+                _messageReceivedSubject.OnNext(message);
+
+            } while (client.State == WebSocketState.Open && !token.IsCancellationRequested);
+
         }
-
-        #endregion
-
-
-        #region SendAsync
-
-        public async Task<bool> SendAsync(byte[] data, int index, int count, bool isText)
+        catch (TaskCanceledException e)
         {
-            await _lock.WaitAsync().ConfigureAwait(false);
-            try
-            {
-                if (_clientSocket == null) return false;
-                int frameCount = (int)Math.Ceiling((double)count / SendChunkSize);
-
-                for (int i = 0; i < frameCount; i++, index += SendChunkSize)
-                {
-                    bool isLast = i == (frameCount - 1);
-
-                    var type = isText ? WebSocketMessageType.Text : WebSocketMessageType.Binary;
-                    await _clientSocket.SendAsync(new ArraySegment<byte>(data, index, count), type, isLast, _cancelToken).ConfigureAwait(false);
-                }
-                return true;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "An error occured trying to send the message");
-                return false;
-            }
-            finally
-            {
-                _lock.Release();
-            }
+            // task was canceled, ignore
+            causedException = e;
         }
-
-        public async Task<bool> SendAsync(SocketFrame message)
+        catch (OperationCanceledException e)
         {
-            var payload = JsonSerializer.SerializeToUtf8Bytes(message);
-            return await SendAsync(payload, 0, payload.Length, true);
+            // operation was canceled, ignore
+            causedException = e;
         }
-
-
-
-
-
-        public async Task<bool> SendHeartbeatAsync(int lastSeq)
+        catch (ObjectDisposedException e)
         {
-            var message = new SocketFrame
-            {
-                OpCode = OpCodes.Gateway.Heartbeat,
-                EventData = lastSeq
-            };
-            return await SendAsync(message);
+            // client was disposed, ignore
+            causedException = e;
         }
-
-
-        #endregion
-
-
-        #region IDisposable
-        protected virtual void Dispose(bool disposing)
+        catch (Exception e)
         {
-            if (!_isDisposed)
-            {
-                if (disposing)
-                {
-                    DisconnectAsync(true).GetAwaiter().GetResult();
-                    _disconnectTokenSource?.Dispose();
-                    _cancelTokenSource?.Dispose();
-                }
-
-                // TODO: free unmanaged resources (unmanaged objects) and override finalizer
-                // TODO: set large fields to null
-                _isDisposed = true;
-            }
+            _logger.LogError(e, "Error while listening to websocket stream, ");
+            causedException = e;
         }
-
-        public void Dispose()
-        {
-            // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
-            Dispose(disposing: true);
-            GC.SuppressFinalize(this);
-        }
-        #endregion
-
-
-        #region Util
-        private async Task<SocketFrame> DecodeSocketMessage(byte[]? result, int resultCount, WebSocketMessageType messageType)
-        {
-            var message = messageType == WebSocketMessageType.Text ?
-            JsonSerializer.Deserialize<SocketFrame>(Encoding.UTF8.GetString(result!, 0, resultCount)) :
-            JsonSerializer.Deserialize<SocketFrame>(await DecodeBinMessage(result!, 0, resultCount));
-            return message!;
-        }
-        private async Task<string> DecodeBinMessage(byte[] data, int index, int count)
-        {
-            if (data == null)
-                throw new InvalidOperationException("Data cant be null");
-            if (_compressed == null || _decompressor == null)
-                throw new InvalidOperationException("The decompression wasnt initialized properly");
-            using var decompressed = new MemoryStream();
-            if (data[0] == 0x78)
-            {
-                _compressed.Write(data, index + 2, count - 2);
-                _compressed.SetLength(count - 2);
-            }
-            else
-            {
-                _compressed.Write(data, index, count);
-                _compressed.SetLength(count);
-            }
-
-            //Reset positions so we don't run out of memory
-            _compressed.Position = 0;
-            _decompressor.CopyTo(decompressed);
-            _compressed.Position = 0;
-            decompressed.Position = 0;
-
-            using var sr = new StreamReader(decompressed);
-            return await sr.ReadToEndAsync();
-        }
-
-        #endregion
+        if (ShouldIgnoreReconnection(client) || !IsStarted)
+            return;
+        _ = ReconnectSynchronized(ReconnectionType.Lost, false, causedException);
     }
+
+
+
+    private bool IsClientConnected() => _client?.State == WebSocketState.Open;
+    private bool ShouldIgnoreReconnection(WebSocket client)
+    {
+        var inProgress = _disposing || _reconnecting || _stopping;
+        var differentClient = client != _client;
+        return inProgress || differentClient;
+    }
+    private static DisconnectionType TranslateTypeToDisconnection(ReconnectionType type)
+    {
+        // beware enum indexes must correspond to each other
+        return (DisconnectionType)type;
+    }
+    private static Func<Uri, CancellationToken, Task<WebSocket>>? GetFactory(Func<ClientWebSocket>? clientFactory)
+    {
+        if (clientFactory == null)
+            return null;
+
+        return async (uri, token) =>
+        {
+            var client = clientFactory();
+            await client.ConnectAsync(uri, token).ConfigureAwait(false);
+            return client;
+        };
+    }
+    private static ClientWebSocket? GetSpecificOrThrow(WebSocket? client)
+    {
+        if (client == null)
+            return null;
+        if (client is not ClientWebSocket specific)
+            throw new WebSocketException("Cannot cast 'WebSocket' client to 'ClientWebSocket', " +
+                                         "provide correct type via factory or don't use this property at all.");
+        return specific;
+    }
+
+
+
+    #region IDisposable
+    private bool _disposing;
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (!_disposing)
+        {
+            _disposing = true;
+            if (disposing)
+            {
+                _logger.LogDebug("Disposing Client");
+                try
+                {
+                    _messagesTextToSendQueue?.Writer.TryComplete();
+                    _messagesBinaryToSendQueue?.Writer.TryComplete();
+                    _cancellation?.Cancel();
+                    _cancellationTotal?.Cancel();
+                    _client?.Abort();
+                    _client?.Dispose();
+                    _lastChanceTimer?.Dispose();
+                    _cancellation?.Dispose();
+                    _cancellationTotal?.Dispose();
+                    _messageReceivedSubject.OnCompleted();
+                    _reconnectionSubject.OnCompleted();
+                }
+                catch (Exception e)
+                {
+                    _logger.LogError(e, "Failed to dispose Client");
+                }
+                if (IsRunning)
+                    _disconnectedSubject.OnNext(DisconnectionInfo.Create(DisconnectionType.Exit, _client!, null));
+                IsRunning = false;
+                IsStarted = false;
+                _disconnectedSubject.OnCompleted();
+            }
+        }
+    }
+
+    public void Dispose()
+    {
+        // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
+        Dispose(disposing: true);
+        GC.SuppressFinalize(this);
+    }
+
+    #endregion
 }
