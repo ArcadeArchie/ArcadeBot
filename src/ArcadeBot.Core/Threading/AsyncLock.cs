@@ -1,9 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
-namespace ArcadeBot.Net.Websockets;
+namespace ArcadeBot.Core.Threading;
 
 /// <summary>
 /// Class that wraps SemaphoreSlim and enables to use locking inside 'using' blocks easily
@@ -16,7 +17,7 @@ namespace ArcadeBot.Net.Websockets;
 /// }
 /// </code>
 /// </summary>
-internal sealed class AsyncLock
+public sealed class AsyncLock
 {
     private readonly Task<IDisposable> _releaserTask;
     private readonly SemaphoreSlim _semaphore = new(1, 1);

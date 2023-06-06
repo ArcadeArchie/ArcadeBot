@@ -1,14 +1,10 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Net.WebSockets;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Text;
-using System.Threading.Tasks;
 using ArcadeBot.Net.Websockets.Models;
 using Microsoft.Extensions.Logging;
-
+using ArcadeBot.Core.Threading;
 namespace ArcadeBot.Net.Websockets;
 
 /// <summary>
