@@ -18,6 +18,6 @@ public class DiscordGatewayMessage
 
     public override string ToString()
     {
-        return string.Format("eventName: {0}, seq: {1}, opCode: {2}, jsonData: {3}", EventName, Sequence, OpCode, EventData?.ToJsonString() ?? "");
+        return string.Format("eventName: {0}, seq: {1}, opCode: {2}, jsonData: {3}", EventName ?? "null", Sequence ?? 0, OpCode, EventData?.ToJsonString() ?? "null");
     }
 }
