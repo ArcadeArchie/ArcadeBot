@@ -10,7 +10,7 @@ namespace ArcadeBot.Net.Websockets;
 /// <summary>
 /// A simple websocket client with built-in reconnection and error handling
 /// </summary>
-public partial class DiscordWebsocketClient : IDiscordWebSocketClient
+internal partial class DiscordWebsocketClient : IDiscordWebSocketClient
 {
     private readonly ILogger<DiscordWebsocketClient> _logger;
     private readonly AsyncLock _lock = new();

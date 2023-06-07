@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging;
 namespace ArcadeBot.Net.Websockets;
 
 ///Reconnect Logic for <see cref="DiscordWebsocketClient"/>
-public partial class DiscordWebsocketClient
+internal partial class DiscordWebsocketClient
 {
 
     /// <summary>

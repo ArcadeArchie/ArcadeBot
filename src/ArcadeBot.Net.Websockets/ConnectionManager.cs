@@ -28,7 +28,7 @@ public class ConnectionManager : IDisposable
 
     public IObservable<DiscordGatewayMessage?> GatewayEvent => _gatewayEvent.AsObservable();
 
-    public ConnectionManager(ILogger<ConnectionManager> logger, IOptions<BotOptions> botConfig, DiscordWebsocketClient discordGatewayClient)
+    internal ConnectionManager(ILogger<ConnectionManager> logger, IOptions<BotOptions> botConfig, DiscordWebsocketClient discordGatewayClient)
     {
         _logger = logger;
         _discordGatewayClient = discordGatewayClient;

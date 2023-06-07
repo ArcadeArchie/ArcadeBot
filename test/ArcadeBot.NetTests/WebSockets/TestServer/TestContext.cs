@@ -18,13 +18,13 @@ public class TestContext<TStartup> where TStartup : class
         _factory = new TestServerApplicationFactory<TStartup>();
         InitLogging(output);
     }
-    public DiscordWebsocketClient CreateClient()
+    internal DiscordWebsocketClient CreateClient()
     {
         _ = _factory.CreateClient(); // This is needed since _factory.Server would otherwise be null
         return CreateClient(_factory.Server.BaseAddress);
     }
 
-    public DiscordWebsocketClient CreateClient(Uri serverUrl)
+    internal DiscordWebsocketClient CreateClient(Uri serverUrl)
     {
         var wsUri = new UriBuilder(serverUrl)
         {
@@ -53,7 +53,7 @@ public class TestContext<TStartup> where TStartup : class
             });
     }
 
-    public DiscordWebsocketClient CreateInvalidClient(Uri serverUrl)
+    internal DiscordWebsocketClient CreateInvalidClient(Uri serverUrl)
     {
         var wsUri = new UriBuilder(serverUrl)
         {

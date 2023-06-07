@@ -17,7 +17,11 @@ namespace ArcadeBot.Net.Websockets
                 .Configure<BotOptions>(botOptions)
                 .AddSingleton(new Uri(Constants.WSSUrl + "/?v=10&encoding=json"))
                 .AddScoped<DiscordWebsocketClient>()
-                .AddScoped<ConnectionManager>();
+                .AddScoped(svc => new ConnectionManager(
+                    svc.GetRequiredService<ILogger<ConnectionManager>>(),
+                    svc.GetRequiredService<IOptions<BotOptions>>(),
+                    svc.GetRequiredService<DiscordWebsocketClient>()
+                ));
             return services;
         }
     }
