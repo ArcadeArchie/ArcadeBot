@@ -17,7 +17,7 @@ jobs:
       - name: Build
         run: dotnet build --configuration Release --no-restore
       - name: Test
-        run: dotnet test --no-restore --logger trx --results-directory "test-results/${{ matrix.dotnet-version }}"
+        run: dotnet test --no-restore --logger "trx;LogFileName=unittests.trx" --results-directory "test-results/${{ matrix.dotnet-version }}"
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2
         if: always()
