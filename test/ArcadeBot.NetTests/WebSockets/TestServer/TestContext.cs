@@ -73,7 +73,7 @@ public class TestContext<TStartup> where TStartup : class
         if (output == null)
             return;
         Log.Logger = new LoggerConfiguration()
-            .MinimumLevel.Verbose()
+            .MinimumLevel.Debug()
             .WriteTo.TestOutput(output, Serilog.Events.LogEventLevel.Verbose)
             .CreateLogger();
     }
