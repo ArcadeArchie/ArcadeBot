@@ -1,7 +1,9 @@
 using ArcadeBot.Net.Websockets;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.Logging;
 using Moq;
 using Serilog;
+using Serilog.Extensions.Logging;
 
 namespace ArcadeBot.NetTests.WebSockets.TestServer;
 
@@ -13,6 +15,9 @@ public class TestContext<TStartup> where TStartup : class
 
     public Uri InvalidUri { get; } = new("wss://invalid-url.local");
 
+    internal Microsoft.Extensions.Logging.ILogger<DiscordWebsocketClient> Logger { get; } = 
+        new SerilogLoggerFactory(Log.Logger).CreateLogger<DiscordWebsocketClient>();
+    
     public TestContext(ITestOutputHelper output)
     {
         _factory = new TestServerApplicationFactory<TStartup>();
@@ -32,8 +37,7 @@ public class TestContext<TStartup> where TStartup : class
             Path = "ws"
         }.Uri;
 
-        var mock = new Mock<Microsoft.Extensions.Logging.ILogger<DiscordWebsocketClient>>();
-        return new DiscordWebsocketClient(mock.Object, wsUri,
+        return new DiscordWebsocketClient(Logger, wsUri,
             async (uri, token) =>
             {
                 if (_factory.Server == null)
@@ -69,7 +73,7 @@ public class TestContext<TStartup> where TStartup : class
         if (output == null)
             return;
         Log.Logger = new LoggerConfiguration()
-            .MinimumLevel.Verbose()
+            .MinimumLevel.Debug()
             .WriteTo.TestOutput(output, Serilog.Events.LogEventLevel.Verbose)
             .CreateLogger();
     }

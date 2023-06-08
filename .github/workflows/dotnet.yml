@@ -1,0 +1,31 @@
+name: Test
+on: [push]
+jobs:
+  build:
+    permissions:
+      checks: write
+      pull-requests: write
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        dotnet-version: [ '7.0.x' ]
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup .NET ${{ matrix.dotnet-version }}
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: ${{ matrix.dotnet-version }}
+      - name: Install dependencies
+        run: dotnet restore
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+      - name: Test
+        run: dotnet test --no-restore --logger "trx;LogFileName=unittests.trx" --results-directory "test-results/${{ matrix.dotnet-version }}"
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()
+        with:
+          files: |
+            test-results/**/*.trx
+            
+
