@@ -1,6 +1,6 @@
 using System.Net.WebSockets;
 
-namespace ArcadeBot.Net.Websockets;
+namespace ArcadeBot.Net.WebSockets;
 
 public class SocketResponse
 {

@@ -2,7 +2,7 @@ using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using ArcadeBot.DTO;
 
-namespace ArcadeBot.Net.Websockets.Models;
+namespace ArcadeBot.Net.WebSockets.Models;
 
 public class DiscordGatewayMessage
 {

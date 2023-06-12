@@ -1,7 +1,7 @@
 using System.Text.Json.Serialization;
 using ArcadeBot.DTO;
 
-namespace ArcadeBot.Net.Websockets.Models.Gateway.Events;
+namespace ArcadeBot.Net.WebSockets.Models.Gateway.Events;
 
 internal class ReadyEvent
 {

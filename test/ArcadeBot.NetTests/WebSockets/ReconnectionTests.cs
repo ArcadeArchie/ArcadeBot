@@ -1,6 +1,6 @@
 using System.Net.WebSockets;
 using System.Reactive.Linq;
-using ArcadeBot.Net.Websockets.Models;
+using ArcadeBot.Net.WebSockets.Models;
 
 namespace ArcadeBot.NetTests.WebSockets;
 

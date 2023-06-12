@@ -1,13 +1,8 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
-using System.Runtime.CompilerServices;
 using System.Net.WebSockets;
 
-namespace ArcadeBot.Net.Websockets;
+namespace ArcadeBot.Net.WebSockets;
 
 /// Sending Logic for <see cref="DiscordWebsocketClient"/>
 internal partial class DiscordWebsocketClient

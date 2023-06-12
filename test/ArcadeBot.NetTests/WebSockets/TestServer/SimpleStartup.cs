@@ -1,7 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Net.WebSockets;
 using System.Text;
-using ArcadeBot.Net.Websockets;
+using ArcadeBot.Net.WebSockets;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;

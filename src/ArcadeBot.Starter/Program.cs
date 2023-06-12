@@ -1,4 +1,4 @@
-using ArcadeBot.Net.Websockets;
+using ArcadeBot.Net.WebSockets;
 using Serilog;
 
 namespace ArcadeBot.Starter;

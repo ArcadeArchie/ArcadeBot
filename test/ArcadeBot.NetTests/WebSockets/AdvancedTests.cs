@@ -1,5 +1,5 @@
 using System.Net.WebSockets;
-using ArcadeBot.Net.Websockets;
+using ArcadeBot.Net.WebSockets;
 
 namespace ArcadeBot.NetTests.WebSockets;
 

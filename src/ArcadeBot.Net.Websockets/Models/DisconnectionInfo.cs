@@ -1,10 +1,6 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Net.WebSockets;
-using System.Threading.Tasks;
 
-namespace ArcadeBot.Net.Websockets.Models;
+namespace ArcadeBot.Net.WebSockets.Models;
 
 public class DisconnectionInfo
 {

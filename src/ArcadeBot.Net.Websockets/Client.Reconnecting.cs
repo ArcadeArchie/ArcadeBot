@@ -1,11 +1,7 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using ArcadeBot.Net.Websockets.Models;
+using ArcadeBot.Net.WebSockets.Models;
 using Microsoft.Extensions.Logging;
 
-namespace ArcadeBot.Net.Websockets;
+namespace ArcadeBot.Net.WebSockets;
 
 ///Reconnect Logic for <see cref="DiscordWebsocketClient"/>
 internal partial class DiscordWebsocketClient

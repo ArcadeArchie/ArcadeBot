@@ -1,21 +1,16 @@
-using System;
-using System.Collections.Generic;
 using System.IO.Compression;
-using System.Linq;
 using System.Net.WebSockets;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Threading.Tasks;
 using ArcadeBot.Core;
-using ArcadeBot.Net.Websockets.Models;
-using ArcadeBot.Net.Websockets.Models.Gateway.Events;
-using ArcadeBot.Net.WebSockets;
+using ArcadeBot.Net.WebSockets.Models;
+using ArcadeBot.Net.WebSockets.Models.Gateway.Events;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace ArcadeBot.Net.Websockets;
+namespace ArcadeBot.Net.WebSockets;
 
 public class ConnectionManager : IDisposable
 {
@@ -79,18 +74,6 @@ public class ConnectionManager : IDisposable
         throw new InvalidOperationException("This type of message is not supported");
     }
 
-    private static async Task<string> DecodeBinMessage(byte[] binaryData)
-    {
-        if (binaryData == null)
-            throw new InvalidOperationException("Data cant be null");
-        using var compressed = new MemoryStream(binaryData);
-        if (compressed.ReadByte() != 0x78 || compressed.ReadByte() != 0x9C)//zlib header
-            throw new InvalidOperationException("Incorrect zlib header");
-        using var deflate = new DeflateStream(compressed, CompressionMode.Decompress);
-
-        using var sr = new StreamReader(deflate);
-        return await sr.ReadToEndAsync();
-    }
 
     protected virtual void Dispose(bool disposing)
     {
@@ -153,4 +136,22 @@ public class ConnectionManager : IDisposable
                 .StartNew(_ => SendHeartBeat(delay), TaskCreationOptions.LongRunning, _heartbeatToken!.Token);
         }
     }
+
+    #region Util
+
+
+    private static async Task<string> DecodeBinMessage(byte[] binaryData)
+    {
+        if (binaryData == null)
+            throw new InvalidOperationException("Data cant be null");
+        using var compressed = new MemoryStream(binaryData);
+        if (compressed.ReadByte() != 0x78 || compressed.ReadByte() != 0x9C)//zlib header
+            throw new InvalidOperationException("Incorrect zlib header");
+        using var deflate = new DeflateStream(compressed, CompressionMode.Decompress);
+
+        using var sr = new StreamReader(deflate);
+        return await sr.ReadToEndAsync();
+    }
+        
+    #endregion
 }

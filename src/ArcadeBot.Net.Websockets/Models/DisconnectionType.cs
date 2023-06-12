@@ -1,4 +1,4 @@
-namespace ArcadeBot.Net.Websockets.Models;
+namespace ArcadeBot.Net.WebSockets.Models;
 
 public enum DisconnectionType
 {

@@ -1,8 +1,7 @@
 using System.Text.Json.Serialization;
 using ArcadeBot.Core;
-using ArcadeBot.Net.WebSockets;
 
-namespace ArcadeBot.Net.Websockets.Models.Gateway.Events;
+namespace ArcadeBot.Net.WebSockets.Models.Gateway.Events;
 
 internal class IdentifyEvent
 {

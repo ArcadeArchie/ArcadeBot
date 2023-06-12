@@ -1,12 +1,11 @@
 using ArcadeBot.Core;
-using ArcadeBot.Net.Websockets;
 using Mediator;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace ArcadeBot.Net.Websockets
+namespace ArcadeBot.Net.WebSockets
 {
     public static class ServiceCollectionExtentions
     {

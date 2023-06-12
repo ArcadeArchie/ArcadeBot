@@ -2,10 +2,10 @@ using System.Net.WebSockets;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Text;
-using ArcadeBot.Net.Websockets.Models;
+using ArcadeBot.Net.WebSockets.Models;
 using Microsoft.Extensions.Logging;
 using ArcadeBot.Core.Threading;
-namespace ArcadeBot.Net.Websockets;
+namespace ArcadeBot.Net.WebSockets;
 
 /// <summary>
 /// A simple websocket client with built-in reconnection and error handling

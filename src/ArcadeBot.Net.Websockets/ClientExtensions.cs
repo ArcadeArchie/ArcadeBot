@@ -1,12 +1,7 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Text.Json;
-using System.Text.Json.Serialization;
-using System.Threading.Tasks;
-using ArcadeBot.Net.Websockets.Models;
+using ArcadeBot.Net.WebSockets.Models;
 
-namespace ArcadeBot.Net.Websockets;
+namespace ArcadeBot.Net.WebSockets;
 
 internal static class ClientExtensions
 {

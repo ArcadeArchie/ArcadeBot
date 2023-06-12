@@ -1,4 +1,4 @@
-using ArcadeBot.Net.Websockets;
+using ArcadeBot.Net.WebSockets;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Logging;
 using Moq;

@@ -1,13 +1,9 @@
 //https://github.com/Marfusios/websocket-client/blob/master/src/Websocket.Client/IWebsocketClient.cs
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Net.WebSockets;
 using System.Text;
-using System.Threading.Tasks;
-using ArcadeBot.Net.Websockets.Models;
+using ArcadeBot.Net.WebSockets.Models;
 
-namespace ArcadeBot.Net.Websockets;
+namespace ArcadeBot.Net.WebSockets;
 
 public interface IDiscordWebSocketClient : IDisposable
 {
