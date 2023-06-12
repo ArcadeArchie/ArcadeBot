@@ -1,0 +1,3 @@
+[submodule "src/ArcadeBot.UI"]
+	path = src/ArcadeBot.UI
+	url = https://github.com/ArcadeApps/ArcadeBot.UI.git
