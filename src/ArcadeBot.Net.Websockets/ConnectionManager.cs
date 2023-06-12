@@ -119,23 +119,10 @@ public class ConnectionManager : IDisposable
 
     private Task SendIdentify()
     {
-        var intents = (GatewayIntents.AllUnprivileged & ~(GatewayIntents.GuildScheduledEvents | GatewayIntents.GuildInvites)) |
-            GatewayIntents.GuildMembers | GatewayIntents.GuildMessages | GatewayIntents.MessageContent;
         var message = new DiscordGatewayMessage
         {
             OpCode = DTO.OpCodes.Gateway.Identify,
-            EventData = JsonValue.Create(new IdentifyEvent(
-                _config.Token,
-                new Dictionary<string, string>
-                {
-                    ["os"] = "Windwos",
-                    ["browser"] = ".NET",
-                    ["device"] = ".NET"
-                },
-                intents,
-                true, 50, new[] { 0, 1 },
-                new PresenceUpdateParams("dnd", 0, false, new List<Activity> { new Activity(0, 0, "Being reworked from scratch", "Being reworked from scratch") })
-            ))
+            EventData = JsonValue.Create(IdentifyEvent.FromOptions(_config))
         };
         return _discordGatewayClient.SendInstant(message);
     }
